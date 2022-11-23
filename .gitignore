@@ -1,0 +1,24 @@
+# Visual Studio files
+**/*.sln
+**/*.vcxproj*
+.vscode/
+**/.vs/
+
+# Build files
+**/Build/
+
+# Scripts
+**/Scripts/Vendor/
+
+#Binaries files
+**/Binaries/
+
+# Asset files
+Data/assets/bios
+Data/assets/psx-exe
+Data/assets/rom
+Data/assets/fonts
+Data/**/*.txt
+
+# OSX artifacts
+**/.DS_Store
