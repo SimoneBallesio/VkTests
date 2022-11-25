@@ -1,5 +1,7 @@
 #include "Pch.hpp"
 
+#ifdef VKP_DEBUG
+
 #include "Core/Log.hpp"
 
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -23,3 +25,5 @@ namespace VKP
 	}
 
 }
+
+#endif

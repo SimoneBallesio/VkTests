@@ -35,6 +35,8 @@ namespace VKP
 		bool BeforeWindowCreation();
 		bool AfterWindowCreation();
 
+		void SwapBuffers();
+
 		Context& operator=(Context&) = delete;
 
 		static Context* Create();
@@ -69,7 +71,13 @@ namespace VKP
 		VkQueue m_TransferQueue = VK_NULL_HANDLE;
 
 		VkCommandPool m_CmdPool = VK_NULL_HANDLE;
-		VkCommandBuffer m_CmdBuffer = VK_NULL_HANDLE;
+		std::vector<VkCommandBuffer> m_CmdBuffer;
+
+		std::vector<VkSemaphore> m_CanAcquireImage; // Can get image from the swapchain for rendering
+		std::vector<VkSemaphore> m_CanPresentImage; // Render finished, can push image to the swapchain
+		std::vector<VkFence> m_PrevFrameRenderEnded; // GPU operations on the previous frame are finished
+
+		uint32_t m_CurrentFrame = 0;
 
 		static inline Context* s_Context = nullptr;
 
@@ -82,6 +90,9 @@ namespace VKP
 		bool CreateDevice();
 
 		bool CreateSwapchain();
+		bool RecreateSwapchain();
+		void DestroySwapchain();
+
 		bool CreateImageViews();
 
 		bool CreateRenderPass();
@@ -91,6 +102,8 @@ namespace VKP
 
 		bool CreateCommandPool();
 		bool AllocateCommandBuffer();
+
+		bool CreateSyncObjects();
 
 		bool RecordCommandBuffer(const VkCommandBuffer& buffer, size_t imageId);
 

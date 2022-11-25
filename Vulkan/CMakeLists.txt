@@ -27,6 +27,7 @@ target_include_directories(Vulkan PRIVATE ${VKP_LIBRARIES_ROOT}/glm)
 target_link_libraries(Vulkan PRIVATE glm)
 
 # spdlog
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 set(SPDLOG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SPDLOG_BUILD_BENCH OFF CACHE BOOL "" FORCE)
 set(SPDLOG_BUILD_TESTING OFF CACHE BOOL "" FORCE)
@@ -34,6 +35,7 @@ set(SPDLOG_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 target_include_directories(Vulkan PRIVATE ${VKP_LIBRARIES_ROOT}/spdlog/include)
 add_subdirectory(${VKP_LIBRARIES_ROOT}/spdlog)
 target_link_libraries(Vulkan PRIVATE spdlog)
+endif()
 
 # shaderc
 # set(SHADERC_SKIP_INSTALL OFF CACHE BOOL "" FORCE)

@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef VKP_DEBUG
+
 #include <spdlog/spdlog.h>
 
 namespace VKP
@@ -16,3 +18,5 @@ namespace VKP
 	};
 
 }
+
+#endif

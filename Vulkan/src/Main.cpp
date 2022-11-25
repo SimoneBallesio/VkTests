@@ -1,24 +1,20 @@
 #include "Pch.hpp"
 
+#include "Core/Application.hpp"
+
+#ifdef VKP_DEBUG
 #include "Core/Log.hpp"
-#include "Core/Definitions.hpp"
-#include "Core/Window.hpp"
+#endif
 
-#include "Rendering/Context.hpp"
-
-int main(int argc, char* argv[])
+int main()
 {
+#ifdef VKP_DEBUG
 	VKP::Log::Init();
+#endif
 
-	auto context = VKP::Context::Create();
-	auto window = VKP::Window::Create(1280, 720);
+	VKP::Application* app = VKP::Application::Create();
+	app->Run();
 
-	bool success = context->BeforeWindowCreation();
-	if (success) success = window->Init();
-	if (success) success = context->AfterWindowCreation();
-
-	delete window;
-	delete context;
-
+	delete app;
 	return 0;
 }

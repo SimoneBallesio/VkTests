@@ -10,6 +10,8 @@
 
 #include <fstream>
 
+#define MAX_CONCURRENT_FRAMES 2
+
 namespace VKP
 {
 
@@ -25,8 +27,19 @@ namespace VKP
 
 	Context::~Context()
 	{
+		vkDeviceWaitIdle(m_Device);
+
+		for (size_t i = 0; i < MAX_CONCURRENT_FRAMES; i++)
+		{
+			vkDestroySemaphore(m_Device, m_CanAcquireImage[i], nullptr);
+			vkDestroySemaphore(m_Device, m_CanPresentImage[i], nullptr);
+			vkDestroyFence(m_Device, m_PrevFrameRenderEnded[i], nullptr);
+		}
+
 		if (m_CmdPool != VK_NULL_HANDLE)
 			vkDestroyCommandPool(m_Device, m_CmdPool, nullptr);
+
+		DestroySwapchain();
 
 		if (m_DefaultPipeline != VK_NULL_HANDLE)
 			vkDestroyPipeline(m_Device, m_DefaultPipeline, nullptr);
@@ -34,17 +47,8 @@ namespace VKP
 		if (m_DefaultPipeLayout != VK_NULL_HANDLE)
 			vkDestroyPipelineLayout(m_Device, m_DefaultPipeLayout, nullptr);
 
-		for (auto &f : m_DefaultFramebuffers)
-			vkDestroyFramebuffer(m_Device, f, nullptr);
-
 		if (m_DefaultRenderPass != VK_NULL_HANDLE)
 			vkDestroyRenderPass(m_Device, m_DefaultRenderPass, nullptr);
-
-		for (auto& i : m_SwapImageViews)
-			vkDestroyImageView(m_Device, i, nullptr);
-
-		if (m_Swapchain != VK_NULL_HANDLE)
-			vkDestroySwapchainKHR(m_Device, m_Swapchain, nullptr);
 
 		if (m_Device != VK_NULL_HANDLE)
 			vkDestroyDevice(m_Device, nullptr);
@@ -77,8 +81,64 @@ namespace VKP
 		if (success) success = CreatePipeline();
 		if (success) success = CreateCommandPool();
 		if (success) success = AllocateCommandBuffer();
+		if (success) success = CreateSyncObjects();
 
 		return success;
+	}
+
+	void Context::SwapBuffers()
+	{
+		vkWaitForFences(m_Device, 1, &m_PrevFrameRenderEnded[m_CurrentFrame], VK_TRUE, UINT64_MAX);
+		vkResetFences(m_Device, 1, &m_PrevFrameRenderEnded[m_CurrentFrame]);
+
+		uint32_t imageId;
+		VkResult result = vkAcquireNextImageKHR(m_Device, m_Swapchain, UINT64_MAX, m_CanAcquireImage[m_CurrentFrame], VK_NULL_HANDLE, &imageId);
+
+		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+		{
+			RecreateSwapchain();
+			return;
+		}
+
+		else if (result != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to acquire swapchain image");
+			return;
+		}
+
+		vkResetCommandBuffer(m_CmdBuffer[m_CurrentFrame], 0);
+
+		RecordCommandBuffer(m_CmdBuffer[m_CurrentFrame], imageId);
+
+		const VkPipelineStageFlags stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+
+		VkSubmitInfo submitInfo = {};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.pCommandBuffers = &m_CmdBuffer[m_CurrentFrame];
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pWaitSemaphores = &m_CanAcquireImage[m_CurrentFrame]; // Wait what?
+		submitInfo.pWaitDstStageMask = stages; // To do what?
+		submitInfo.waitSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = &m_CanPresentImage[m_CurrentFrame];
+		submitInfo.signalSemaphoreCount = 1;
+
+		if (vkQueueSubmit(m_PresentQueue, 1, &submitInfo, m_PrevFrameRenderEnded[m_CurrentFrame]) != VK_SUCCESS)
+		{
+			VKP_ASSERT(false, "Unable to submit queue for rendering");
+			return;
+		}
+
+		VkPresentInfoKHR presentInfo = {};
+		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		presentInfo.pSwapchains = &m_Swapchain;
+		presentInfo.swapchainCount = 1;
+		presentInfo.pWaitSemaphores = &m_CanPresentImage[m_CurrentFrame];
+		presentInfo.waitSemaphoreCount = 1;
+		presentInfo.pImageIndices = &imageId;
+
+		result = vkQueuePresentKHR(m_PresentQueue, &presentInfo);
+
+		m_CurrentFrame = (m_CurrentFrame + 1) % MAX_CONCURRENT_FRAMES;
 	}
 
 	Context* Context::Create()
@@ -386,6 +446,27 @@ namespace VKP
 		return true;
 	}
 
+	bool Context::RecreateSwapchain()
+	{
+		vkDeviceWaitIdle(m_Device);
+
+		bool success = CreateSwapchain();
+		if (success) success = CreateImageViews();
+		if (success) success = CreateFramebuffers();
+	}
+
+	void Context::DestroySwapchain()
+	{
+		for (auto& f : m_DefaultFramebuffers)
+			vkDestroyFramebuffer(m_Device, f, nullptr);
+
+		for (auto& i : m_SwapImageViews)
+			vkDestroyImageView(m_Device, i, nullptr);
+
+		if (m_Swapchain != VK_NULL_HANDLE)
+			vkDestroySwapchainKHR(m_Device, m_Swapchain, nullptr);
+	}
+
 	bool Context::CreateImageViews()
 	{
 		uint32_t count = 0;
@@ -449,12 +530,22 @@ namespace VKP
 		subpass.pColorAttachments = &colorRef;
 		subpass.colorAttachmentCount = 1;
 
+		VkSubpassDependency subd = {};
+		subd.srcSubpass = VK_SUBPASS_EXTERNAL;
+		subd.dstSubpass = 0;
+		subd.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		subd.srcAccessMask = 0;
+		subd.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		subd.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
 		VkRenderPassCreateInfo passInfo = {};
 		passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 		passInfo.pSubpasses = &subpass;
 		passInfo.subpassCount = 1;
 		passInfo.pAttachments = &colorPass;
 		passInfo.attachmentCount = 1;
+		passInfo.pDependencies = &subd;
+		passInfo.dependencyCount = 1;
 
 		if (vkCreateRenderPass(m_Device, &passInfo, nullptr, &m_DefaultRenderPass) != VK_SUCCESS)
 		{
@@ -658,12 +749,51 @@ namespace VKP
 		cmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 		cmdInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 		cmdInfo.commandPool = m_CmdPool;
-		cmdInfo.commandBufferCount = 1;
+		cmdInfo.commandBufferCount = MAX_CONCURRENT_FRAMES;
 
-		if (vkAllocateCommandBuffers(m_Device, &cmdInfo, &m_CmdBuffer) != VK_SUCCESS)
+		m_CmdBuffer.resize(MAX_CONCURRENT_FRAMES, VK_NULL_HANDLE);
+
+		if (vkAllocateCommandBuffers(m_Device, &cmdInfo, m_CmdBuffer.data()) != VK_SUCCESS)
 		{
 			VKP_ERROR("Unable to allocate presentation command buffer");
 			return false;
+		}
+
+		return true;
+	}
+
+	bool Context::CreateSyncObjects()
+	{
+		VkSemaphoreCreateInfo semInfo = {};
+		semInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+		VkFenceCreateInfo fenceInfo = {};
+		fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+		fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+		m_CanAcquireImage.resize(MAX_CONCURRENT_FRAMES, VK_NULL_HANDLE);
+		m_CanPresentImage.resize(MAX_CONCURRENT_FRAMES, VK_NULL_HANDLE);
+		m_PrevFrameRenderEnded.resize(MAX_CONCURRENT_FRAMES, VK_NULL_HANDLE);
+
+		for (size_t i = 0; i < MAX_CONCURRENT_FRAMES; i++)
+		{
+			if (vkCreateSemaphore(m_Device, &semInfo, nullptr, &m_CanAcquireImage[i]) != VK_SUCCESS)
+			{
+				VKP_ERROR("Unable to create semaphore");
+				return false;
+			}
+
+			if (vkCreateSemaphore(m_Device, &semInfo, nullptr, &m_CanPresentImage[i]) != VK_SUCCESS)
+			{
+				VKP_ERROR("Unable to create semaphore");
+				return false;
+			}
+
+			if (vkCreateFence(m_Device, &fenceInfo, nullptr, &m_PrevFrameRenderEnded[i]) != VK_SUCCESS)
+			{
+				VKP_ERROR("Unable to create fence");
+				return false;
+			}
 		}
 
 		return true;
@@ -808,3 +938,5 @@ namespace VKP
 #endif
 
 }
+
+#undef MAX_CONCURRENT_FRAMES

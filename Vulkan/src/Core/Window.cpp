@@ -1,6 +1,7 @@
 #include "Pch.hpp"
 
 #include "Core/Definitions.hpp"
+#include "Core/Application.hpp"
 #include "Core/Window.hpp"
 
 #include <SDL2/SDL.h>
@@ -53,6 +54,26 @@ namespace VKP
 
 	void Window::PollEvents() const
 	{
+		SDL_Event e;
+
+		while (SDL_PollEvent(&e) != 0)
+		{
+			if (e.type == SDL_QUIT)
+			{
+				Application::Get().Stop();
+				return;
+			}
+
+			else if (e.type == SDL_KEYDOWN)
+			{
+				switch (e.key.keysym.sym)
+				{
+				case SDLK_ESCAPE:
+					Application::Get().Stop();
+					return;
+				}
+			}
+		}
 	}
 
 	void* Window::GetNativeHandle() const
