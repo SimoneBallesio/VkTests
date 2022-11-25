@@ -1,8 +1,10 @@
 #pragma once
 
+#include <SDL2/SDL.h>
+
 #include <cstdint>
 
-struct GLFWwindow;
+struct SDL_Window;
 
 namespace VKP
 {
@@ -30,6 +32,8 @@ namespace VKP
 
 		void PollEvents() const;
 
+		void* GetNativeHandle() const;
+
 		Window& operator=(Window&) = delete;
 
 		static Window* Create(uint32_t width, uint32_t height, const std::string& title = "Engine 3D");
@@ -37,6 +41,7 @@ namespace VKP
 
 	private:
 		WindowData m_Data = {};
+		SDL_Window* m_Window = nullptr;
 
 		Window(uint32_t width, uint32_t height, const std::string& title);
 

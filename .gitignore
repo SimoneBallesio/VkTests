@@ -19,6 +19,7 @@ Data/assets/psx-exe
 Data/assets/rom
 Data/assets/fonts
 Data/**/*.txt
+Data/**/*.spv
 
 # OSX artifacts
 **/.DS_Store

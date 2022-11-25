@@ -11,12 +11,12 @@ target_include_directories(Vulkan PRIVATE src)
 
 # Rendering back-end
 find_package(Vulkan REQUIRED)
-target_link_libraries(Vulkan ${Vulkan_LIBRARY})
-target_include_directories(Vulkan PRIVATE ${Vulkan_INCLUDE_DIRS})
+target_link_libraries(Vulkan PRIVATE ${Vulkan_LIBRARY})
+target_include_directories(Vulkan PRIVATE ${Vulkan_INCLUDE_DIR})
 
 # SDL
 find_package(SDL2 REQUIRED)
-target_link_libraries(Vulkan ${SDL2_LIBRARY})
+target_link_libraries(Vulkan PRIVATE ${SDL2_LIBRARIES})
 target_include_directories(Vulkan PRIVATE ${SDL2_INCLUDE_DIRS})
 
 # GLM
@@ -24,7 +24,7 @@ set(GLM_TEST_ENABLE OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(${VKP_LIBRARIES_ROOT}/glm)
 target_include_directories(Vulkan PRIVATE ${VKP_LIBRARIES_ROOT}/glm)
-target_link_libraries(Vulkan glm)
+target_link_libraries(Vulkan PRIVATE glm)
 
 # spdlog
 set(SPDLOG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -33,7 +33,7 @@ set(SPDLOG_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
 target_include_directories(Vulkan PRIVATE ${VKP_LIBRARIES_ROOT}/spdlog/include)
 add_subdirectory(${VKP_LIBRARIES_ROOT}/spdlog)
-target_link_libraries(Vulkan spdlog)
+target_link_libraries(Vulkan PRIVATE spdlog)
 
 # shaderc
 # set(SHADERC_SKIP_INSTALL OFF CACHE BOOL "" FORCE)
@@ -69,4 +69,4 @@ set(VMA_BUILD_REPLAY OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(${VKP_LIBRARIES_ROOT}/VulkanMemoryAllocator)
 target_include_directories(Vulkan PRIVATE ${VKP_LIBRARIES_ROOT}/VulkanMemoryAllocator/include)
-target_link_libraries(Vulkan VulkanMemoryAllocator)
+target_link_libraries(Vulkan PRIVATE VulkanMemoryAllocator)
