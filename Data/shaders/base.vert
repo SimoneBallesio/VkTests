@@ -1,12 +1,21 @@
 #version 450 core
 
-vec2 positions[3] = vec2[](
-	vec2(0.0, -0.5),
-	vec2(0.5, 0.5),
-	vec2(-0.5, 0.5)
-);
+layout (location = 0) in vec2 aPosition;
+layout (location = 1) in vec3 aColor;
+
+layout (push_constant) uniform constants
+{
+	mat4 VP;
+} PushConstants;
+
+layout (location = 0)
+out vs_out
+{
+	vec3 Color;
+} Out;
 
 void main()
 {
-	gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
+	gl_Position = PushConstants.VP * vec4(aPosition, 0.0, 1.0);
+	Out.Color = aColor;
 }

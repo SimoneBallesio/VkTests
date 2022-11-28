@@ -1,9 +1,16 @@
 #pragma once
 
+#include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 
 namespace VKP
 {
+
+	struct Buffer
+	{
+		VkBuffer BufferHandle = VK_NULL_HANDLE;
+		VmaAllocation MemoryHandle = VK_NULL_HANDLE;
+	};
 
 	struct QueueIndices
 	{
@@ -21,6 +28,7 @@ namespace VKP
 		std::vector<VkSurfaceFormatKHR> SurfaceFormats;
 		VkExtent2D CurrentExtent;
 		VkSurfaceFormatKHR Format;
+		VkSurfaceFormatKHR PrevFormat;
 
 		bool IsValid() const;
 	};
@@ -50,12 +58,17 @@ namespace VKP
 		VkPhysicalDevice m_PhysDevice = VK_NULL_HANDLE;
 		VkDevice m_Device = VK_NULL_HANDLE;
 
+		VmaAllocator m_Allocator = VK_NULL_HANDLE;
+
 		VkSurfaceKHR m_Surface = VK_NULL_HANDLE;
 
 		SwapchainData m_SwapchainData = {};
 		VkSwapchainKHR m_Swapchain = VK_NULL_HANDLE;
 		std::vector<VkImage> m_SwapImages;
 		std::vector<VkImageView> m_SwapImageViews;
+
+		VkViewport m_Viewport = {};
+		VkRect2D m_Scissor = {};
 
 		VkRenderPass m_DefaultRenderPass = VK_NULL_HANDLE;
 		std::vector<VkFramebuffer> m_DefaultFramebuffers;
@@ -73,13 +86,18 @@ namespace VKP
 		VkQueue m_TransferQueue = VK_NULL_HANDLE;
 
 		VkCommandPool m_CmdPool = VK_NULL_HANDLE;
+		VkCommandPool m_TransferPool = VK_NULL_HANDLE;
 		std::vector<VkCommandBuffer> m_CmdBuffer;
+
+		Buffer m_VertexBuffer = {};
+		Buffer m_IndexBuffer = {};
 
 		std::vector<VkSemaphore> m_CanAcquireImage; // Can get image from the swapchain for rendering
 		std::vector<VkSemaphore> m_CanPresentImage; // Render finished, can push image to the swapchain
 		std::vector<VkFence> m_PrevFrameRenderEnded; // GPU operations on the previous frame are finished
 
 		uint32_t m_CurrentFrame = 0;
+		float m_AspectRatio = 16.0f / 9.0f;
 		bool m_Resized = false;
 
 		static inline Context* s_Context = nullptr;
@@ -92,6 +110,8 @@ namespace VKP
 		bool ChoosePhysicalDevice();
 		bool CreateDevice();
 
+		bool CreateMemoryAllocator();
+
 		bool CreateSwapchain();
 		bool RecreateSwapchain();
 		void DestroySwapchain();
@@ -103,12 +123,18 @@ namespace VKP
 
 		bool CreatePipeline();
 
+		bool CreateVertexBuffer();
+		bool CreateIndexBuffer();
+
 		bool CreateCommandPool();
 		bool AllocateCommandBuffer();
 
 		bool CreateSyncObjects();
 
 		bool RecordCommandBuffer(const VkCommandBuffer& buffer, size_t imageId);
+
+		bool CreateBuffer(Buffer& buffer, VkDeviceSize size, VkBufferUsageFlags bufferUsage, VmaAllocationCreateFlags memoryFlags);
+		bool CopyBuffer(const Buffer& src, const Buffer& dst, VkDeviceSize size);
 
 		VkExtent2D ChooseExtents() const;
 		VkSurfaceFormatKHR ChooseSurfaceFormat() const;

@@ -8,6 +8,9 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
 
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <fstream>
 
 #define MAX_CONCURRENT_FRAMES 2
@@ -29,12 +32,21 @@ namespace VKP
 	{
 		vkDeviceWaitIdle(m_Device);
 
+		if (m_VertexBuffer.BufferHandle != VK_NULL_HANDLE)
+			vmaDestroyBuffer(m_Allocator, m_VertexBuffer.BufferHandle, m_VertexBuffer.MemoryHandle);
+
+		if (m_IndexBuffer.BufferHandle != VK_NULL_HANDLE)
+			vmaDestroyBuffer(m_Allocator, m_IndexBuffer.BufferHandle, m_IndexBuffer.MemoryHandle);
+
 		for (size_t i = 0; i < MAX_CONCURRENT_FRAMES; i++)
 		{
 			vkDestroySemaphore(m_Device, m_CanAcquireImage[i], nullptr);
 			vkDestroySemaphore(m_Device, m_CanPresentImage[i], nullptr);
 			vkDestroyFence(m_Device, m_PrevFrameRenderEnded[i], nullptr);
 		}
+
+		if (m_TransferPool != m_CmdPool)
+			vkDestroyCommandPool(m_Device, m_TransferPool, nullptr);
 
 		if (m_CmdPool != VK_NULL_HANDLE)
 			vkDestroyCommandPool(m_Device, m_CmdPool, nullptr);
@@ -49,6 +61,9 @@ namespace VKP
 
 		if (m_DefaultRenderPass != VK_NULL_HANDLE)
 			vkDestroyRenderPass(m_Device, m_DefaultRenderPass, nullptr);
+
+		if (m_Allocator != VK_NULL_HANDLE)
+			vmaDestroyAllocator(m_Allocator);
 
 		if (m_Device != VK_NULL_HANDLE)
 			vkDestroyDevice(m_Device, nullptr);
@@ -74,6 +89,7 @@ namespace VKP
 		bool success = CreateSurface();
 		if (success) success = ChoosePhysicalDevice();
 		if (success) success = CreateDevice();
+		if (success) success = CreateMemoryAllocator();
 		if (success) success = CreateSwapchain();
 		if (success) success = CreateImageViews();
 		if (success) success = CreateRenderPass();
@@ -82,6 +98,9 @@ namespace VKP
 		if (success) success = CreateCommandPool();
 		if (success) success = AllocateCommandBuffer();
 		if (success) success = CreateSyncObjects();
+
+		if (success) success = CreateVertexBuffer();
+		if (success) success = CreateIndexBuffer();
 
 		return success;
 	}
@@ -157,6 +176,7 @@ namespace VKP
 	void Context::OnResize(uint32_t width, uint32_t height)
 	{
 		if (width == 0 || height == 0) return;
+		m_AspectRatio = (float)width / (float)height;
 		m_Resized = true;
 	}
 
@@ -297,9 +317,12 @@ namespace VKP
 			for (const auto& q : queues)
 			{
 				if (q.queueFlags & VK_QUEUE_GRAPHICS_BIT)
+				{
 					m_QueueIndices.Graphics = i;
+					m_QueueIndices.Transfer = i;
+				}
 
-				if (q.queueFlags & VK_QUEUE_TRANSFER_BIT)
+				else if (q.queueFlags & VK_QUEUE_TRANSFER_BIT)
 					m_QueueIndices.Transfer = i;
 
 				VkBool32 supported = VK_FALSE;
@@ -308,7 +331,7 @@ namespace VKP
 				if (supported == VK_TRUE)
 					m_QueueIndices.Presentation = i;
 
-				if (m_QueueIndices.AreValid()) break;
+				if (m_QueueIndices.Graphics != m_QueueIndices.Transfer && m_QueueIndices.AreValid()) break;
 			}
 
 			uint32_t formatCount = 0;
@@ -413,6 +436,23 @@ namespace VKP
 		return true;
 	}
 
+	bool Context::CreateMemoryAllocator()
+	{
+		VmaAllocatorCreateInfo allocInfo = {};
+		allocInfo.instance = m_Instance;
+		allocInfo.physicalDevice = m_PhysDevice;
+		allocInfo.device = m_Device;
+		allocInfo.vulkanApiVersion = VK_API_VERSION_1_3;
+
+		if (vmaCreateAllocator(&allocInfo, &m_Allocator) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to create memory allocator");
+			return false;
+		}
+
+		return true;
+	}
+
 	bool Context::CreateSwapchain()
 	{
 		vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_PhysDevice, m_Surface, &m_SwapchainData.Capabilities);
@@ -469,13 +509,29 @@ namespace VKP
 	{
 		vkDeviceWaitIdle(m_Device);
 
+		m_SwapchainData.PrevFormat = m_SwapchainData.Format;
+
 		DestroySwapchain();
 
-		bool success = CreateSwapchain();
-		if (success) success = CreateImageViews();
-		if (success) success = CreateFramebuffers();
+		bool valid = CreateSwapchain();
+		if (valid) valid = CreateImageViews();
 
-		return success;
+		if (valid && (m_SwapchainData.PrevFormat.colorSpace != m_SwapchainData.Format.colorSpace || m_SwapchainData.PrevFormat.format != m_SwapchainData.Format.format))
+		{
+			VKP_WARN("Mismatch between previous and current presentation formats");
+
+			vkDestroyRenderPass(m_Device, m_DefaultRenderPass, nullptr);
+			valid = CreateRenderPass();
+		}
+
+		m_Viewport.width = (float)m_SwapchainData.CurrentExtent.width;
+		m_Viewport.height = (float)m_SwapchainData.CurrentExtent.height;
+		m_Scissor.extent = m_SwapchainData.CurrentExtent;
+		m_Scissor.offset = { 0, 0 };
+
+		if (valid) valid = CreateFramebuffers();
+
+		return valid;
 	}
 
 	void Context::DestroySwapchain()
@@ -667,15 +723,47 @@ namespace VKP
 		dynInfo.pDynamicStates = dynamicStates.data();
 		dynInfo.dynamicStateCount = dynamicStates.size();
 
+		VkVertexInputBindingDescription vertBind = {};
+		vertBind.binding = 0;
+		vertBind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+		vertBind.stride = 5 * sizeof(float);
+
+		std::vector<VkVertexInputAttributeDescription> descriptions;
+		descriptions.reserve(2);
+
+		auto& posDesc = descriptions.emplace_back();
+		posDesc.format = VK_FORMAT_R32G32_SFLOAT;
+		posDesc.location = 0;
+		posDesc.binding = 0;
+		posDesc.offset = 0;
+
+		auto& colDesc = descriptions.emplace_back();
+		colDesc.format = VK_FORMAT_R32G32B32_SFLOAT;
+		colDesc.location = 1;
+		colDesc.binding = 0;
+		colDesc.offset = 2 * sizeof(float);
+
 		VkPipelineVertexInputStateCreateInfo vertInfo = {};
 		vertInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-		vertInfo.vertexAttributeDescriptionCount = 0;
-		vertInfo.vertexBindingDescriptionCount = 0;
+		vertInfo.pVertexBindingDescriptions = &vertBind;
+		vertInfo.vertexAttributeDescriptionCount = descriptions.size();
+		vertInfo.pVertexAttributeDescriptions = descriptions.data();
+		vertInfo.vertexBindingDescriptionCount = 1;
 
 		VkPipelineInputAssemblyStateCreateInfo inputInfo = {};
 		inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
 		inputInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 		inputInfo.primitiveRestartEnable = VK_FALSE;
+
+		m_Viewport.x = 0.0f;
+		m_Viewport.y = 0.0f;
+		m_Viewport.width = (float)m_SwapchainData.CurrentExtent.width;
+		m_Viewport.height = (float)m_SwapchainData.CurrentExtent.height;
+		m_Viewport.minDepth = 0.0f;
+		m_Viewport.maxDepth = 1.0f;
+
+		m_Scissor.extent = m_SwapchainData.CurrentExtent;
+		m_Scissor.offset = { 0, 0 };
 
 		VkPipelineViewportStateCreateInfo viewportInfo = {};
 		viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -706,8 +794,15 @@ namespace VKP
 		blendInfo.pAttachments = &blendState;
 		blendInfo.attachmentCount = 1;
 
+		VkPushConstantRange vpRange = {};
+		vpRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		vpRange.size = sizeof(glm::mat4);
+		vpRange.offset = 0;
+
 		VkPipelineLayoutCreateInfo pipeLayoutInfo = {};
 		pipeLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		pipeLayoutInfo.pPushConstantRanges = &vpRange;
+		pipeLayoutInfo.pushConstantRangeCount = 1;
 
 		if (vkCreatePipelineLayout(m_Device, &pipeLayoutInfo, nullptr, &m_DefaultPipeLayout) != VK_SUCCESS)
 		{
@@ -750,14 +845,101 @@ namespace VKP
 		return true;
 	}
 
+	bool Context::CreateVertexBuffer()
+	{
+		const std::vector<float> vertices = {
+			-0.5f, -0.5f, 1.0f, 0.0f, 0.0f,
+			0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
+			0.5f, 0.5f, 0.0f, 0.0f, 1.0f,
+			-0.5f, 0.5f, 1.0f, 1.0f, 1.0f,
+		};
+
+		Buffer staging = {};
+
+		if (!CreateBuffer(staging, vertices.size() * sizeof(float), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
+			return false;
+
+		void* data;
+		if (vmaMapMemory(m_Allocator, staging.MemoryHandle, &data) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to map staging buffer for initial copy");
+			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		memcpy(data, vertices.data(), vertices.size() * sizeof(float));
+
+		vmaUnmapMemory(m_Allocator, staging.MemoryHandle);
+
+		if (!CreateBuffer(m_VertexBuffer, vertices.size() * sizeof(float), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT))
+		{
+			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		bool success = CopyBuffer(staging, m_VertexBuffer, vertices.size() * sizeof(float));
+		vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+
+		return success;
+	}
+
+	bool Context::CreateIndexBuffer()
+	{
+		std::vector<uint32_t> indices = {
+			0, 1, 2, 2, 3, 0,
+		};
+
+		Buffer staging = {};
+
+		if (!CreateBuffer(staging, indices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
+			return false;
+
+		void* data;
+		if (vmaMapMemory(m_Allocator, staging.MemoryHandle, &data) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to map staging buffer for initial copy");
+			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		memcpy(data, indices.data(), indices.size() * sizeof(uint32_t));
+
+		vmaUnmapMemory(m_Allocator, staging.MemoryHandle);
+
+		if (!CreateBuffer(m_IndexBuffer, indices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT))
+		{
+			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		bool success = CopyBuffer(staging, m_IndexBuffer, indices.size() * sizeof(uint32_t));
+		vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+
+		return success;
+	}
+
 	bool Context::CreateCommandPool()
 	{
 		VkCommandPoolCreateInfo poolInfo = {};
 		poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-		poolInfo.queueFamilyIndex = m_QueueIndices.Presentation;
+		poolInfo.queueFamilyIndex = m_QueueIndices.Graphics;
 		poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
 		if (vkCreateCommandPool(m_Device, &poolInfo, nullptr, &m_CmdPool) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to create presentation command pool");
+			return false;
+		}
+
+		if (m_QueueIndices.Presentation == m_QueueIndices.Graphics)
+		{
+			m_TransferPool = m_CmdPool;
+			return true;
+		}
+
+		poolInfo.queueFamilyIndex = m_QueueIndices.Transfer;
+
+		if (vkCreateCommandPool(m_Device, &poolInfo, nullptr, &m_TransferPool) != VK_SUCCESS)
 		{
 			VKP_ERROR("Unable to create presentation command pool");
 			return false;
@@ -847,25 +1029,21 @@ namespace VKP
 
 		vkCmdBeginRenderPass(buffer, &passInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		VkViewport view = {};
-		view.x = 0.0f;
-		view.y = 0.0f;
-		view.width = (float)m_SwapchainData.CurrentExtent.width;
-		view.height = (float)m_SwapchainData.CurrentExtent.height;
-		view.minDepth = 0.0f;
-		view.maxDepth = 1.0f;
+		vkCmdSetViewport(buffer, 0, 1, &m_Viewport);
+		vkCmdSetScissor(buffer, 0, 1, &m_Scissor);
 
-		vkCmdSetViewport(buffer, 0, 1, &view);
+		VkDeviceSize offset = 0;
+		vkCmdBindVertexBuffers(buffer, 0, 1, &m_VertexBuffer.BufferHandle, &offset);
 
-		VkRect2D scissor = {};
-		scissor.offset = {0, 0};
-		scissor.extent = m_SwapchainData.CurrentExtent;
-
-		vkCmdSetScissor(buffer, 0, 1, &scissor);
+		vkCmdBindIndexBuffer(buffer, m_IndexBuffer.BufferHandle, offset, VK_INDEX_TYPE_UINT32);
 
 		vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DefaultPipeline);
 
-		vkCmdDraw(buffer, 3, 1, 0, 0);
+		glm::mat4 vp = glm::perspective(glm::radians(70.0f), m_AspectRatio, 0.1f, 100.0f) * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -3.0f));
+
+		vkCmdPushConstants(buffer, m_DefaultPipeLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &vp[0][0]);
+
+		vkCmdDrawIndexed(buffer, 6, 1, 0, 0, 0);
 
 		vkCmdEndRenderPass(buffer);
 
@@ -874,6 +1052,100 @@ namespace VKP
 			VKP_ERROR("Unable to end command buffer");
 			return false;
 		}
+
+		return true;
+	}
+
+	bool Context::CreateBuffer(Buffer& buffer, VkDeviceSize size, VkBufferUsageFlags bufferUsage, VmaAllocationCreateFlags memoryFlags)
+	{
+		std::set<uint32_t> indexSet = { m_QueueIndices.Graphics, m_QueueIndices.Transfer };
+		std::vector<uint32_t> indices(indexSet.begin(), indexSet.end());
+
+		VkBufferCreateInfo bufInfo = {};
+		bufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufInfo.size = size;
+		bufInfo.usage = bufferUsage;
+
+		if ((bufferUsage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) && indices.size() > 1)
+		{
+			bufInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
+			bufInfo.pQueueFamilyIndices = indices.data();
+			bufInfo.queueFamilyIndexCount = indices.size();
+		}
+
+		else
+		{
+			bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+			bufInfo.pQueueFamilyIndices = nullptr;
+			bufInfo.queueFamilyIndexCount = 0;
+		}
+
+		VmaAllocationCreateInfo memInfo = {};
+		memInfo.usage = VMA_MEMORY_USAGE_AUTO;
+		memInfo.flags = memoryFlags;
+
+		if (vmaCreateBuffer(m_Allocator, &bufInfo, &memInfo, &buffer.BufferHandle, &buffer.MemoryHandle, nullptr) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to create buffer");
+			return false;
+		}
+
+		return true;
+	}
+
+	bool Context::CopyBuffer(const Buffer& src, const Buffer& dst, VkDeviceSize size)
+	{
+		VkCommandBuffer copyBuffer = VK_NULL_HANDLE;
+
+		VkCommandBufferAllocateInfo bufInfo = {};
+		bufInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		bufInfo.commandPool = m_TransferPool;
+		bufInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		bufInfo.commandBufferCount = 1;
+
+		if (vkAllocateCommandBuffers(m_Device, &bufInfo, &copyBuffer) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to allocate buffer transfer command pool");
+			return false;
+		}
+
+		VkCommandBufferBeginInfo begInfo = {};
+		begInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		begInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		if (vkBeginCommandBuffer(copyBuffer, &begInfo) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to begin copy command buffer");
+			return false;
+		}
+
+		VkBufferCopy region = {};
+		region.srcOffset = 0;
+		region.dstOffset = 0;
+		region.size = size;
+
+		vkCmdCopyBuffer(copyBuffer, src.BufferHandle, dst.BufferHandle, 1, &region);
+
+		if (vkEndCommandBuffer(copyBuffer) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to end copy command buffer");
+			return false;
+		}
+
+		VkSubmitInfo submitInfo = {};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &copyBuffer;
+
+		if (vkQueueSubmit(m_TransferQueue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to submit copy buffer commands to transfer queue");
+			return false;
+		}
+
+		vkQueueWaitIdle(m_TransferQueue);
+
+		vkFreeCommandBuffers(m_Device, m_TransferPool, 1, &copyBuffer);
 
 		return true;
 	}
