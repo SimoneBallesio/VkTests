@@ -92,6 +92,12 @@ namespace VKP
 		Buffer m_VertexBuffer = {};
 		Buffer m_IndexBuffer = {};
 
+		std::vector<Buffer> m_UniformBuffers;
+
+		VkDescriptorSetLayout m_DescSetLayout = VK_NULL_HANDLE;
+		VkDescriptorPool m_DescPool = VK_NULL_HANDLE;
+		std::vector<VkDescriptorSet> m_DescSets;
+
 		std::vector<VkSemaphore> m_CanAcquireImage; // Can get image from the swapchain for rendering
 		std::vector<VkSemaphore> m_CanPresentImage; // Render finished, can push image to the swapchain
 		std::vector<VkFence> m_PrevFrameRenderEnded; // GPU operations on the previous frame are finished
@@ -120,6 +126,12 @@ namespace VKP
 
 		bool CreateRenderPass();
 		bool CreateFramebuffers();
+
+		bool CreateUniformBuffers();
+
+		bool CreateDescriptorSetLayout();
+		bool CreateDescriptorPool();
+		bool AllocateDescriptorSets();
 
 		bool CreatePipeline();
 

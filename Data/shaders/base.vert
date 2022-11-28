@@ -3,6 +3,11 @@
 layout (location = 0) in vec2 aPosition;
 layout (location = 1) in vec3 aColor;
 
+layout (binding = 0) uniform ubo
+{
+	mat4 M;
+} UBO;
+
 layout (push_constant) uniform constants
 {
 	mat4 VP;
@@ -16,6 +21,6 @@ out vs_out
 
 void main()
 {
-	gl_Position = PushConstants.VP * vec4(aPosition, 0.0, 1.0);
+	gl_Position = PushConstants.VP * UBO.M * vec4(aPosition, 0.0, 1.0);
 	Out.Color = aColor;
 }

@@ -32,6 +32,18 @@ namespace VKP
 	{
 		vkDeviceWaitIdle(m_Device);
 
+		if (m_DescPool != VK_NULL_HANDLE)
+			vkDestroyDescriptorPool(m_Device, m_DescPool, nullptr);
+
+		if (m_DescSetLayout != VK_NULL_HANDLE)
+			vkDestroyDescriptorSetLayout(m_Device, m_DescSetLayout, nullptr);
+
+		for (auto& b : m_UniformBuffers)
+		{
+			if (b.BufferHandle != VK_NULL_HANDLE)
+				vmaDestroyBuffer(m_Allocator, b.BufferHandle, b.MemoryHandle);
+		}
+
 		if (m_VertexBuffer.BufferHandle != VK_NULL_HANDLE)
 			vmaDestroyBuffer(m_Allocator, m_VertexBuffer.BufferHandle, m_VertexBuffer.MemoryHandle);
 
@@ -94,6 +106,10 @@ namespace VKP
 		if (success) success = CreateImageViews();
 		if (success) success = CreateRenderPass();
 		if (success) success = CreateFramebuffers();
+		if (success) success = CreateUniformBuffers();
+		if (success) success = CreateDescriptorSetLayout();
+		if (success) success = CreateDescriptorPool();
+		if (success) success = AllocateDescriptorSets();
 		if (success) success = CreatePipeline();
 		if (success) success = CreateCommandPool();
 		if (success) success = AllocateCommandBuffer();
@@ -129,6 +145,13 @@ namespace VKP
 		vkResetCommandBuffer(m_CmdBuffer[m_CurrentFrame], 0);
 
 		RecordCommandBuffer(m_CmdBuffer[m_CurrentFrame], imageId);
+
+		glm::mat4 M = glm::mat4(1.0f);
+
+		void* data = nullptr;
+		vmaMapMemory(m_Allocator, m_UniformBuffers[m_CurrentFrame].MemoryHandle, &data);
+		memcpy(data, &M[0][0], sizeof(glm::mat4));
+		vmaUnmapMemory(m_Allocator, m_UniformBuffers[m_CurrentFrame].MemoryHandle);
 
 		const VkPipelineStageFlags stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 
@@ -660,6 +683,109 @@ namespace VKP
 		return true;
 	}
 
+	bool Context::CreateUniformBuffers()
+	{
+		m_UniformBuffers.reserve(MAX_CONCURRENT_FRAMES);
+
+		for (size_t i = 0; i < MAX_CONCURRENT_FRAMES; i++)
+		{
+			auto& b = m_UniformBuffers.emplace_back();
+
+			if (!CreateBuffer(b, sizeof(glm::mat4), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
+			{
+				VKP_ERROR("Unable to create uniform buffer for in-flight frame {}", i);
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool Context::CreateDescriptorSetLayout()
+	{
+		VkDescriptorSetLayoutBinding binding = {};
+		binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		binding.descriptorCount = 1;
+		binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		binding.binding = 0;
+
+		VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		layoutInfo.pBindings = &binding;
+		layoutInfo.bindingCount = 1;
+
+		if (vkCreateDescriptorSetLayout(m_Device, &layoutInfo, nullptr, &m_DescSetLayout) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to create descriptor set layout");
+			return false;
+		}
+
+		return true;
+	}
+
+	bool Context::CreateDescriptorPool()
+	{
+		VkDescriptorPoolSize size = {};
+		size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		size.descriptorCount = MAX_CONCURRENT_FRAMES;
+
+		VkDescriptorPoolCreateInfo poolInfo = {};
+		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		poolInfo.pPoolSizes = &size;
+		poolInfo.poolSizeCount = 1;
+		poolInfo.maxSets = MAX_CONCURRENT_FRAMES;
+
+		if (vkCreateDescriptorPool(m_Device, &poolInfo, nullptr, &m_DescPool) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to create descriptor pool");
+			return false;
+		}
+
+		return true;
+	}
+
+	bool Context::AllocateDescriptorSets()
+	{
+		const std::vector<VkDescriptorSetLayout> layouts(MAX_CONCURRENT_FRAMES, m_DescSetLayout);
+
+		VkDescriptorSetAllocateInfo setInfo = {};
+		setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		setInfo.descriptorPool = m_DescPool;
+		setInfo.descriptorSetCount = MAX_CONCURRENT_FRAMES;
+		setInfo.pSetLayouts = layouts.data();
+
+		m_DescSets.resize(MAX_CONCURRENT_FRAMES);
+
+		if (vkAllocateDescriptorSets(m_Device, &setInfo, m_DescSets.data()) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to allocate descriptor sets");
+			return false;
+		}
+
+		for (size_t i = 0; i < MAX_CONCURRENT_FRAMES; i++)
+		{
+			const auto& b = m_UniformBuffers[i];
+
+			VkDescriptorBufferInfo bufInfo = {};
+			bufInfo.buffer = b.BufferHandle;
+			bufInfo.offset = 0;
+			bufInfo.range = VK_WHOLE_SIZE;
+
+			VkWriteDescriptorSet writeInfo = {};
+			writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writeInfo.pBufferInfo = &bufInfo;
+			writeInfo.dstSet = m_DescSets[i];
+			writeInfo.dstBinding = 0;
+			writeInfo.dstArrayElement = 0;
+			writeInfo.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			writeInfo.descriptorCount = 1;
+
+			vkUpdateDescriptorSets(m_Device, 1, &writeInfo, 0, nullptr);
+		}
+
+		return true;
+	}
+
 	bool Context::CreatePipeline()
 	{
 		std::string moduleNames[] = {
@@ -803,6 +929,8 @@ namespace VKP
 		pipeLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 		pipeLayoutInfo.pPushConstantRanges = &vpRange;
 		pipeLayoutInfo.pushConstantRangeCount = 1;
+		pipeLayoutInfo.pSetLayouts = &m_DescSetLayout;
+		pipeLayoutInfo.setLayoutCount = 1;
 
 		if (vkCreatePipelineLayout(m_Device, &pipeLayoutInfo, nullptr, &m_DefaultPipeLayout) != VK_SUCCESS)
 		{
@@ -1042,6 +1170,7 @@ namespace VKP
 		glm::mat4 vp = glm::perspective(glm::radians(70.0f), m_AspectRatio, 0.1f, 100.0f) * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -3.0f));
 
 		vkCmdPushConstants(buffer, m_DefaultPipeLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &vp[0][0]);
+		vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DefaultPipeLayout, 0, 1, &m_DescSets[m_CurrentFrame], 0, nullptr);
 
 		vkCmdDrawIndexed(buffer, 6, 1, 0, 0, 0);
 
