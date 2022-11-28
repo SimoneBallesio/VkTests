@@ -28,8 +28,8 @@ namespace VKP
 
 		while (m_Running)
 		{
-			m_Window->PollEvents();
 			m_Context->SwapBuffers();
+			m_Window->PollEvents();
 		}
 	}
 

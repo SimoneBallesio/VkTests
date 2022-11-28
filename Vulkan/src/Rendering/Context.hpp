@@ -37,6 +37,8 @@ namespace VKP
 
 		void SwapBuffers();
 
+		void OnResize(uint32_t width, uint32_t height);
+
 		Context& operator=(Context&) = delete;
 
 		static Context* Create();
@@ -78,6 +80,7 @@ namespace VKP
 		std::vector<VkFence> m_PrevFrameRenderEnded; // GPU operations on the previous frame are finished
 
 		uint32_t m_CurrentFrame = 0;
+		bool m_Resized = false;
 
 		static inline Context* s_Context = nullptr;
 

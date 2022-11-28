@@ -4,6 +4,8 @@
 #include "Core/Application.hpp"
 #include "Core/Window.hpp"
 
+#include "Rendering/Context.hpp"
+
 #include <SDL2/SDL.h>
 
 namespace VKP
@@ -21,7 +23,7 @@ namespace VKP
 		if (SDL_Init(SDL_INIT_VIDEO) != 0)
 			return false;
 
-		uint32_t flags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_VULKAN;
+		uint32_t flags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE;
 		m_Window = SDL_CreateWindow(m_Data.Title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, m_Data.Width, m_Data.Height, flags);
 
 		SDL_GetWindowSize(m_Window, (int*)&m_Data.Width, (int*)&m_Data.Height);
@@ -52,25 +54,47 @@ namespace VKP
 		return m_Data.Title.c_str();
 	}
 
-	void Window::PollEvents() const
+	void Window::PollEvents()
 	{
 		SDL_Event e;
 
 		while (SDL_PollEvent(&e) != 0)
 		{
-			if (e.type == SDL_QUIT)
+			switch (e.type)
 			{
-				Application::Get().Stop();
-				return;
-			}
-
-			else if (e.type == SDL_KEYDOWN)
-			{
-				switch (e.key.keysym.sym)
+				case SDL_QUIT:
 				{
-				case SDLK_ESCAPE:
 					Application::Get().Stop();
 					return;
+				}
+
+				case SDL_WINDOWEVENT:
+				{
+					switch (e.window.event)
+					{
+						case SDL_WINDOWEVENT_SIZE_CHANGED:
+						{
+							VKP_INFO("Window size changed: ({}x{})", e.window.data1, e.window.data2);
+
+							m_Data.Width = (uint32_t)e.window.data1;
+							m_Data.Height = (uint32_t)e.window.data2;
+
+							Context::Get().OnResize(m_Data.Width, m_Data.Height);
+
+							break;
+						}
+					}
+					break;
+				}
+
+				case SDL_KEYDOWN:
+				{
+					switch (e.key.keysym.sym)
+					{
+						case SDLK_ESCAPE:
+							Application::Get().Stop();
+							return;
+					}
 				}
 			}
 		}

@@ -89,22 +89,23 @@ namespace VKP
 	void Context::SwapBuffers()
 	{
 		vkWaitForFences(m_Device, 1, &m_PrevFrameRenderEnded[m_CurrentFrame], VK_TRUE, UINT64_MAX);
-		vkResetFences(m_Device, 1, &m_PrevFrameRenderEnded[m_CurrentFrame]);
 
 		uint32_t imageId;
 		VkResult result = vkAcquireNextImageKHR(m_Device, m_Swapchain, UINT64_MAX, m_CanAcquireImage[m_CurrentFrame], VK_NULL_HANDLE, &imageId);
 
-		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+		if (result == VK_ERROR_OUT_OF_DATE_KHR)
 		{
 			RecreateSwapchain();
 			return;
 		}
 
-		else if (result != VK_SUCCESS)
+		else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
 		{
 			VKP_ERROR("Unable to acquire swapchain image");
 			return;
 		}
+
+		vkResetFences(m_Device, 1, &m_PrevFrameRenderEnded[m_CurrentFrame]);
 
 		vkResetCommandBuffer(m_CmdBuffer[m_CurrentFrame], 0);
 
@@ -138,7 +139,25 @@ namespace VKP
 
 		result = vkQueuePresentKHR(m_PresentQueue, &presentInfo);
 
+		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || m_Resized)
+		{
+			m_Resized = false;
+			RecreateSwapchain();
+		}
+
+		else if (result != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to present image to the swapchain");
+			return;
+		}
+
 		m_CurrentFrame = (m_CurrentFrame + 1) % MAX_CONCURRENT_FRAMES;
+	}
+
+	void Context::OnResize(uint32_t width, uint32_t height)
+	{
+		if (width == 0 || height == 0) return;
+		m_Resized = true;
 	}
 
 	Context* Context::Create()
@@ -450,9 +469,13 @@ namespace VKP
 	{
 		vkDeviceWaitIdle(m_Device);
 
+		DestroySwapchain();
+
 		bool success = CreateSwapchain();
 		if (success) success = CreateImageViews();
 		if (success) success = CreateFramebuffers();
+
+		return success;
 	}
 
 	void Context::DestroySwapchain()
