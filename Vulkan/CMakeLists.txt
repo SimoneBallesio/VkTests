@@ -4,8 +4,10 @@ set(VKP_LIBRARIES_ROOT "${CMAKE_SOURCE_DIR}/Vulkan/vendor")
 # Source files
 file(GLOB_RECURSE VKP_HEADERS src/*.hpp)
 file(GLOB_RECURSE VKP_SOURCES src/*.cpp)
+file(GLOB_RECURSE STB_IMAGE_HEADERS vendor/stb_image/*.h)
+file(GLOB_RECURSE STB_IMAGE_SOURCES vendor/stb_image/*.cpp)
 
-add_executable(Vulkan ${VKP_HEADERS} ${VKP_SOURCES})
+add_executable(Vulkan ${VKP_HEADERS} ${VKP_SOURCES} ${STB_IMAGE_HEADERS} ${STB_IMAGE_SOURCES})
 target_precompile_headers(Vulkan PRIVATE ${CMAKE_SOURCE_DIR}/Vulkan/src/Pch.hpp)
 target_include_directories(Vulkan PRIVATE src)
 
@@ -21,6 +23,9 @@ target_include_directories(Vulkan PRIVATE ${SDL2_INCLUDE_DIRS})
 
 # GLM
 set(GLM_TEST_ENABLE OFF CACHE BOOL "" FORCE)
+
+# stb_image
+target_include_directories(Vulkan PRIVATE ${VKP_LIBRARIES_ROOT}/stb_image)
 
 add_subdirectory(${VKP_LIBRARIES_ROOT}/glm)
 target_include_directories(Vulkan PRIVATE ${VKP_LIBRARIES_ROOT}/glm)

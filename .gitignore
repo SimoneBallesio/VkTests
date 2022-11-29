@@ -14,10 +14,8 @@
 **/Binaries/
 
 # Asset files
-Data/assets/bios
-Data/assets/psx-exe
-Data/assets/rom
 Data/assets/fonts
+Data/assets/textures
 Data/**/*.txt
 Data/**/*.spv
 

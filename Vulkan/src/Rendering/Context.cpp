@@ -11,6 +11,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <stb_image.h>
+
 #include <fstream>
 
 #define MAX_CONCURRENT_FRAMES 2
@@ -31,6 +33,13 @@ namespace VKP
 	Context::~Context()
 	{
 		vkDeviceWaitIdle(m_Device);
+
+		if (m_TestTexture.ImageHandle != VK_NULL_HANDLE)
+		{
+			vkDestroySampler(m_Device, m_TestTexture.SamplerHandle, nullptr);
+			vkDestroyImageView(m_Device, m_TestTexture.ViewHandle, nullptr);
+			vmaDestroyImage(m_Allocator, m_TestTexture.ImageHandle, m_TestTexture.MemoryHandle);
+		}
 
 		if (m_DescPool != VK_NULL_HANDLE)
 			vkDestroyDescriptorPool(m_Device, m_DescPool, nullptr);
@@ -106,14 +115,20 @@ namespace VKP
 		if (success) success = CreateImageViews();
 		if (success) success = CreateRenderPass();
 		if (success) success = CreateFramebuffers();
+		if (success) success = CreateCommandPool();
+		if (success) success = AllocateCommandBuffer();
+		if (success) success = CreateSyncObjects();
+
+		if (success) success = CreateTestTexture();
+		if (success) success = CreateTestTextureView();
+		if (success) success = CreateTestTextureSampler();
+
 		if (success) success = CreateUniformBuffers();
+
 		if (success) success = CreateDescriptorSetLayout();
 		if (success) success = CreateDescriptorPool();
 		if (success) success = AllocateDescriptorSets();
 		if (success) success = CreatePipeline();
-		if (success) success = CreateCommandPool();
-		if (success) success = AllocateCommandBuffer();
-		if (success) success = CreateSyncObjects();
 
 		if (success) success = CreateVertexBuffer();
 		if (success) success = CreateIndexBuffer();
@@ -506,19 +521,13 @@ namespace VKP
 		swapInfo.presentMode = presentMode;
 		swapInfo.oldSwapchain = VK_NULL_HANDLE;
 		swapInfo.clipped = VK_TRUE;
+		swapInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 		if (indices[0] != indices[1])
 		{
 			swapInfo.pQueueFamilyIndices = indices;
 			swapInfo.queueFamilyIndexCount = 2;
 			swapInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-		}
-
-		else
-		{
-			swapInfo.pQueueFamilyIndices = nullptr;
-			swapInfo.queueFamilyIndexCount = 0;
-			swapInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		}
 
 		if (vkCreateSwapchainKHR(m_Device, &swapInfo, nullptr, &m_Swapchain) != VK_SUCCESS)
@@ -709,16 +718,24 @@ namespace VKP
 
 	bool Context::CreateDescriptorSetLayout()
 	{
-		VkDescriptorSetLayoutBinding binding = {};
+		std::vector<VkDescriptorSetLayoutBinding> bindings(2);
+		
+		auto& binding = bindings[0];
 		binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		binding.descriptorCount = 1;
 		binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 		binding.binding = 0;
 
+		auto& samplerBinding = bindings[1];
+		samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		samplerBinding.descriptorCount = 1;
+		samplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		samplerBinding.binding = 1;
+
 		VkDescriptorSetLayoutCreateInfo layoutInfo = {};
 		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-		layoutInfo.pBindings = &binding;
-		layoutInfo.bindingCount = 1;
+		layoutInfo.pBindings = bindings.data();
+		layoutInfo.bindingCount = bindings.size();
 
 		if (vkCreateDescriptorSetLayout(m_Device, &layoutInfo, nullptr, &m_DescSetLayout) != VK_SUCCESS)
 		{
@@ -731,14 +748,20 @@ namespace VKP
 
 	bool Context::CreateDescriptorPool()
 	{
-		VkDescriptorPoolSize size = {};
+		std::vector<VkDescriptorPoolSize> sizes(2);
+		
+		auto& size = sizes[0];
 		size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		size.descriptorCount = MAX_CONCURRENT_FRAMES; // 2 descriptors, 1 x  concurrent frame
 
+		auto& samplerSize = sizes[1];
+		samplerSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		samplerSize.descriptorCount = MAX_CONCURRENT_FRAMES;
+
 		VkDescriptorPoolCreateInfo poolInfo = {};
 		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-		poolInfo.pPoolSizes = &size;
-		poolInfo.poolSizeCount = 1;
+		poolInfo.pPoolSizes = sizes.data();
+		poolInfo.poolSizeCount = sizes.size();
 		poolInfo.maxSets = MAX_CONCURRENT_FRAMES; // 1 set x concurrent frame
 
 		if (vkCreateDescriptorPool(m_Device, &poolInfo, nullptr, &m_DescPool) != VK_SUCCESS)
@@ -777,16 +800,32 @@ namespace VKP
 			bufInfo.offset = 0;
 			bufInfo.range = VK_WHOLE_SIZE;
 
-			VkWriteDescriptorSet writeInfo = {};
-			writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			writeInfo.pBufferInfo = &bufInfo;
-			writeInfo.dstSet = m_DescSets[i];
-			writeInfo.dstBinding = 0;
-			writeInfo.dstArrayElement = 0;
-			writeInfo.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			writeInfo.descriptorCount = 1;
+			VkDescriptorImageInfo imgInfo = {};
+			imgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			imgInfo.imageView = m_TestTexture.ViewHandle;
+			imgInfo.sampler = m_TestTexture.SamplerHandle;
 
-			vkUpdateDescriptorSets(m_Device, 1, &writeInfo, 0, nullptr);
+			std::vector<VkWriteDescriptorSet> writeInfos(2);
+
+			auto& bufWriteInfo = writeInfos[0];
+			bufWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			bufWriteInfo.pBufferInfo = &bufInfo;
+			bufWriteInfo.dstSet = m_DescSets[i];
+			bufWriteInfo.dstBinding = 0;
+			bufWriteInfo.dstArrayElement = 0;
+			bufWriteInfo.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			bufWriteInfo.descriptorCount = 1;
+
+			auto& imgWriteInfo = writeInfos[1];
+			imgWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			imgWriteInfo.pImageInfo = &imgInfo;
+			imgWriteInfo.dstSet = m_DescSets[i];
+			imgWriteInfo.dstBinding = 1;
+			imgWriteInfo.dstArrayElement = 0;
+			imgWriteInfo.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			imgWriteInfo.descriptorCount = 1;
+
+			vkUpdateDescriptorSets(m_Device, writeInfos.size(), writeInfos.data(), 0, nullptr);
 		}
 
 		return true;
@@ -795,8 +834,8 @@ namespace VKP
 	bool Context::CreatePipeline()
 	{
 		std::string moduleNames[] = {
-			"shaders/base.vert.spv",
-			"shaders/base.frag.spv",
+			"assets/shaders/base.vert.spv",
+			"assets/shaders/base.frag.spv",
 		};
 
 		const VkShaderStageFlagBits moduleStages[] = {
@@ -858,10 +897,10 @@ namespace VKP
 		VkVertexInputBindingDescription vertBind = {};
 		vertBind.binding = 0;
 		vertBind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-		vertBind.stride = 5 * sizeof(float);
+		vertBind.stride = 7 * sizeof(float);
 
 		std::vector<VkVertexInputAttributeDescription> descriptions;
-		descriptions.reserve(2);
+		descriptions.reserve(3);
 
 		auto& posDesc = descriptions.emplace_back();
 		posDesc.format = VK_FORMAT_R32G32_SFLOAT;
@@ -874,6 +913,12 @@ namespace VKP
 		colDesc.location = 1;
 		colDesc.binding = 0;
 		colDesc.offset = 2 * sizeof(float);
+
+		auto& texDesc = descriptions.emplace_back();
+		texDesc.format = VK_FORMAT_R32G32_SFLOAT;
+		texDesc.location = 2;
+		texDesc.binding = 0;
+		texDesc.offset = 5 * sizeof(float);
 
 		VkPipelineVertexInputStateCreateInfo vertInfo = {};
 		vertInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -906,7 +951,7 @@ namespace VKP
 		rasterInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 		rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
 		rasterInfo.cullMode = VK_CULL_MODE_BACK_BIT;
-		rasterInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
+		rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 		rasterInfo.rasterizerDiscardEnable = VK_FALSE;
 		rasterInfo.depthBiasEnable = VK_FALSE;
 		rasterInfo.lineWidth = 1.0f;
@@ -977,79 +1022,6 @@ namespace VKP
 			vkDestroyShaderModule(m_Device, m, nullptr);
 
 		return true;
-	}
-
-	bool Context::CreateVertexBuffer()
-	{
-		const std::vector<float> vertices = {
-			-0.5f, -0.5f, 1.0f, 0.0f, 0.0f,
-			0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
-			0.5f, 0.5f, 0.0f, 0.0f, 1.0f,
-			-0.5f, 0.5f, 1.0f, 1.0f, 1.0f,
-		};
-
-		Buffer staging = {};
-
-		if (!CreateBuffer(staging, vertices.size() * sizeof(float), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
-			return false;
-
-		void* data;
-		if (vmaMapMemory(m_Allocator, staging.MemoryHandle, &data) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to map staging buffer for initial copy");
-			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
-			return false;
-		}
-
-		memcpy(data, vertices.data(), vertices.size() * sizeof(float));
-
-		vmaUnmapMemory(m_Allocator, staging.MemoryHandle);
-
-		if (!CreateBuffer(m_VertexBuffer, vertices.size() * sizeof(float), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT))
-		{
-			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
-			return false;
-		}
-
-		bool success = CopyBuffer(staging, m_VertexBuffer, vertices.size() * sizeof(float));
-		vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
-
-		return success;
-	}
-
-	bool Context::CreateIndexBuffer()
-	{
-		std::vector<uint32_t> indices = {
-			0, 1, 2, 2, 3, 0,
-		};
-
-		Buffer staging = {};
-
-		if (!CreateBuffer(staging, indices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
-			return false;
-
-		void* data;
-		if (vmaMapMemory(m_Allocator, staging.MemoryHandle, &data) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to map staging buffer for initial copy");
-			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
-			return false;
-		}
-
-		memcpy(data, indices.data(), indices.size() * sizeof(uint32_t));
-
-		vmaUnmapMemory(m_Allocator, staging.MemoryHandle);
-
-		if (!CreateBuffer(m_IndexBuffer, indices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT))
-		{
-			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
-			return false;
-		}
-
-		bool success = CopyBuffer(staging, m_IndexBuffer, indices.size() * sizeof(uint32_t));
-		vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
-
-		return success;
 	}
 
 	bool Context::CreateCommandPool()
@@ -1138,6 +1110,289 @@ namespace VKP
 		return true;
 	}
 
+	bool Context::CreateVertexBuffer()
+	{
+		const std::vector<float> vertices = {
+			-0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+			0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
+			0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+			-0.5f, 0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+		};
+
+		Buffer staging = {};
+
+		if (!CreateBuffer(staging, vertices.size() * sizeof(float), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
+			return false;
+
+		void* data;
+		if (vmaMapMemory(m_Allocator, staging.MemoryHandle, &data) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to map staging buffer for initial copy");
+			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		memcpy(data, vertices.data(), vertices.size() * sizeof(float));
+
+		vmaUnmapMemory(m_Allocator, staging.MemoryHandle);
+
+		if (!CreateBuffer(m_VertexBuffer, vertices.size() * sizeof(float), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT))
+		{
+			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		bool success = CopyBuffer(staging, m_VertexBuffer, vertices.size() * sizeof(float));
+		vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+
+		return success;
+	}
+
+	bool Context::CreateIndexBuffer()
+	{
+		std::vector<uint32_t> indices = {
+			0, 1, 2, 2, 3, 0,
+		};
+
+		Buffer staging = {};
+
+		if (!CreateBuffer(staging, indices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
+			return false;
+
+		void* data;
+		if (vmaMapMemory(m_Allocator, staging.MemoryHandle, &data) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to map staging buffer for initial copy");
+			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		memcpy(data, indices.data(), indices.size() * sizeof(uint32_t));
+
+		vmaUnmapMemory(m_Allocator, staging.MemoryHandle);
+
+		if (!CreateBuffer(m_IndexBuffer, indices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT))
+		{
+			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		bool success = CopyBuffer(staging, m_IndexBuffer, indices.size() * sizeof(uint32_t));
+		vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+
+		return success;
+	}
+
+	bool Context::CreateTestTexture()
+	{
+		int w = 0, h = 0, nrChannels = 0;
+		uint8_t* data = stbi_load("assets/textures/texture.jpg", &w, &h, &nrChannels, STBI_rgb_alpha);
+
+		if (data == nullptr)
+		{
+			VKP_ERROR("Unable to locate texture file");
+			return false;
+		}
+
+		Buffer staging = {};
+
+		if (!CreateBuffer(staging, w * h * 4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
+		{
+			VKP_ERROR("Unable to create staging buffer for texture upload");
+			stbi_image_free(data);
+			return false;
+		}
+
+		void* bufData = nullptr;
+		vmaMapMemory(m_Allocator, staging.MemoryHandle, &bufData);
+		memcpy(bufData, data, w * h * 4);
+		vmaUnmapMemory(m_Allocator, staging.MemoryHandle);
+
+		stbi_image_free(data);
+
+		VkImageFormatProperties props;
+		vkGetPhysicalDeviceImageFormatProperties(m_PhysDevice, VK_FORMAT_R8G8B8_SRGB, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 0, &props);
+
+		std::set<uint32_t> indicesSet = { m_QueueIndices.Graphics, m_QueueIndices.Transfer };
+		std::vector<uint32_t> indices(indicesSet.begin(), indicesSet.end());
+
+		VkImageCreateInfo imgInfo = {};
+		imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imgInfo.imageType = VK_IMAGE_TYPE_2D;
+		imgInfo.extent.width = w;
+		imgInfo.extent.height = h;
+		imgInfo.extent.depth = 1;
+		imgInfo.mipLevels = 1;
+		imgInfo.arrayLayers = 1;
+		imgInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+		imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+		imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		imgInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+		imgInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		if (m_QueueIndices.Transfer != m_QueueIndices.Graphics)
+		{
+			imgInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
+			imgInfo.pQueueFamilyIndices = indices.data();
+			imgInfo.queueFamilyIndexCount = indices.size();
+		}
+
+		VmaAllocationCreateInfo memInfo = {};
+		memInfo.usage = VMA_MEMORY_USAGE_AUTO;
+		memInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+
+		if (vmaCreateImage(m_Allocator, &imgInfo, &memInfo, &m_TestTexture.ImageHandle, &m_TestTexture.MemoryHandle, nullptr) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to create image object");
+			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		VkCommandBuffer cmdBuffer = VK_NULL_HANDLE;
+
+		VkCommandBufferAllocateInfo cmdBufferInfo = {};
+		cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		cmdBufferInfo.commandPool = m_TransferPool;
+		cmdBufferInfo.commandBufferCount = 1;
+		cmdBufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+		if (vkAllocateCommandBuffers(m_Device, &cmdBufferInfo, &cmdBuffer) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to allocate command buffer for buffer > image transfer");
+			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		VkCommandBufferBeginInfo begInfo = {};
+		begInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		begInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		if (vkBeginCommandBuffer(cmdBuffer, &begInfo) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to begin command buffer for buffer > image transfer");
+			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		VkBufferImageCopy region = {};
+		region.bufferImageHeight = 0;
+		region.bufferOffset = 0;
+		region.bufferRowLength = 0;
+		region.imageExtent = { (uint32_t)w, (uint32_t)h, 1 };
+		region.imageOffset = { 0, 0, 0 };
+		region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		region.imageSubresource.baseArrayLayer = 0;
+		region.imageSubresource.mipLevel = 0;
+		region.imageSubresource.layerCount = 1;
+
+		VkImageMemoryBarrier barrier = {};
+		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barrier.image = m_TestTexture.ImageHandle;
+		barrier.srcAccessMask = 0;
+		barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		barrier.subresourceRange.baseMipLevel = 0;
+		barrier.subresourceRange.levelCount = 1;
+		barrier.subresourceRange.baseArrayLayer = 0;
+		barrier.subresourceRange.layerCount = 1;
+
+		vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+		vkCmdCopyBufferToImage(cmdBuffer, staging.BufferHandle, m_TestTexture.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+		vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+		if (vkEndCommandBuffer(cmdBuffer) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to end command buffer for buffer > image transfer");
+			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		VkSubmitInfo endInfo = {};
+		endInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		endInfo.pCommandBuffers = &cmdBuffer;
+		endInfo.commandBufferCount = 1;
+
+		if (vkQueueSubmit(m_TransferQueue, 1, &endInfo, VK_NULL_HANDLE) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to submit queue for buffer > image transfer");
+			vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		vkQueueWaitIdle(m_TransferQueue);
+
+		vkFreeCommandBuffers(m_Device, m_TransferPool, 1, &cmdBuffer);
+		vmaDestroyBuffer(m_Allocator, staging.BufferHandle, staging.MemoryHandle);
+
+		return true;
+	}
+
+	bool Context::CreateTestTextureView()
+	{
+		VkImageViewCreateInfo viewInfo = {};
+		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		viewInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+		viewInfo.image = m_TestTexture.ImageHandle;
+		viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		viewInfo.subresourceRange.baseArrayLayer = 0;
+		viewInfo.subresourceRange.layerCount = 1;
+		viewInfo.subresourceRange.baseMipLevel = 0;
+		viewInfo.subresourceRange.levelCount = 1;
+
+		if (vkCreateImageView(m_Device, &viewInfo, nullptr, &m_TestTexture.ViewHandle) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to create image view for test texture");
+			return false;
+		}
+
+		return true;
+	}
+
+	bool Context::CreateTestTextureSampler()
+	{
+		VkSamplerCreateInfo samplerInfo = {};
+		samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+		samplerInfo.unnormalizedCoordinates = VK_FALSE;
+		samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.anisotropyEnable = VK_FALSE;
+		samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+		samplerInfo.compareEnable = VK_FALSE;
+		samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+		samplerInfo.minFilter = VK_FILTER_LINEAR;
+		samplerInfo.magFilter = VK_FILTER_LINEAR;
+		samplerInfo.maxAnisotropy = 1.0f;
+		samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		samplerInfo.mipLodBias = 0.0f;
+		samplerInfo.minLod = 0.0f;
+		samplerInfo.maxLod = 0.0f;
+
+		if (vkCreateSampler(m_Device, &samplerInfo, nullptr, &m_TestTexture.SamplerHandle) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to create sampler for test texture");
+			return false;
+		}
+
+		return true;
+	}
+
 	bool Context::RecordCommandBuffer(const VkCommandBuffer& buffer, size_t imageId)
 	{
 		VkCommandBufferBeginInfo cmdInfo = {};
@@ -1200,19 +1455,13 @@ namespace VKP
 		bufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 		bufInfo.size = size;
 		bufInfo.usage = bufferUsage;
+		bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 		if ((bufferUsage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) && indices.size() > 1)
 		{
 			bufInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
 			bufInfo.pQueueFamilyIndices = indices.data();
 			bufInfo.queueFamilyIndexCount = indices.size();
-		}
-
-		else
-		{
-			bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-			bufInfo.pQueueFamilyIndices = nullptr;
-			bufInfo.queueFamilyIndexCount = 0;
 		}
 
 		VmaAllocationCreateInfo memInfo = {};

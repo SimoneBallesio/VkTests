@@ -12,6 +12,14 @@ namespace VKP
 		VmaAllocation MemoryHandle = VK_NULL_HANDLE;
 	};
 
+	struct Texture
+	{
+		VkImage ImageHandle = VK_NULL_HANDLE;
+		VkImageView ViewHandle = VK_NULL_HANDLE;
+		VkSampler SamplerHandle = VK_NULL_HANDLE;
+		VmaAllocation MemoryHandle = VK_NULL_HANDLE;
+	};
+
 	struct QueueIndices
 	{
 		uint32_t Graphics = UINT32_MAX;
@@ -92,6 +100,8 @@ namespace VKP
 		Buffer m_VertexBuffer = {};
 		Buffer m_IndexBuffer = {};
 
+		Texture m_TestTexture = {};
+
 		std::vector<Buffer> m_UniformBuffers;
 
 		VkDescriptorSetLayout m_DescSetLayout = VK_NULL_HANDLE;
@@ -135,13 +145,16 @@ namespace VKP
 
 		bool CreatePipeline();
 
-		bool CreateVertexBuffer();
-		bool CreateIndexBuffer();
-
 		bool CreateCommandPool();
 		bool AllocateCommandBuffer();
 
 		bool CreateSyncObjects();
+
+		bool CreateVertexBuffer();
+		bool CreateIndexBuffer();
+		bool CreateTestTexture();
+		bool CreateTestTextureView();
+		bool CreateTestTextureSampler();
 
 		bool RecordCommandBuffer(const VkCommandBuffer& buffer, size_t imageId);
 
