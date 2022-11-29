@@ -23,7 +23,7 @@ namespace VKP
 		if (SDL_Init(SDL_INIT_VIDEO) != 0)
 			return false;
 
-		uint32_t flags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE;
+		uint32_t flags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_VULKAN; // | SDL_WINDOW_RESIZABLE;
 		m_Window = SDL_CreateWindow(m_Data.Title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, m_Data.Width, m_Data.Height, flags);
 
 		SDL_GetWindowSize(m_Window, (int*)&m_Data.Width, (int*)&m_Data.Height);

@@ -146,7 +146,12 @@ namespace VKP
 
 		RecordCommandBuffer(m_CmdBuffer[m_CurrentFrame], imageId);
 
-		glm::mat4 M = glm::mat4(1.0f);
+		static auto startTime = std::chrono::high_resolution_clock::now();
+		auto currentTime = std::chrono::high_resolution_clock::now();
+		float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+		glm::mat4 M = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)) *
+			glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
 		void* data = nullptr;
 		vmaMapMemory(m_Allocator, m_UniformBuffers[m_CurrentFrame].MemoryHandle, &data);
@@ -547,8 +552,9 @@ namespace VKP
 			valid = CreateRenderPass();
 		}
 
-		m_Viewport.width = (float)m_SwapchainData.CurrentExtent.width;
-		m_Viewport.height = (float)m_SwapchainData.CurrentExtent.height;
+		m_Viewport.y = static_cast<float>(m_SwapchainData.CurrentExtent.height);
+		m_Viewport.width = static_cast<float>(m_SwapchainData.CurrentExtent.width);
+		m_Viewport.height = static_cast<float>(m_SwapchainData.CurrentExtent.height) * -1.0f;
 		m_Scissor.extent = m_SwapchainData.CurrentExtent;
 		m_Scissor.offset = { 0, 0 };
 
@@ -727,13 +733,13 @@ namespace VKP
 	{
 		VkDescriptorPoolSize size = {};
 		size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		size.descriptorCount = MAX_CONCURRENT_FRAMES;
+		size.descriptorCount = MAX_CONCURRENT_FRAMES; // 2 descriptors, 1 x  concurrent frame
 
 		VkDescriptorPoolCreateInfo poolInfo = {};
 		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 		poolInfo.pPoolSizes = &size;
 		poolInfo.poolSizeCount = 1;
-		poolInfo.maxSets = MAX_CONCURRENT_FRAMES;
+		poolInfo.maxSets = MAX_CONCURRENT_FRAMES; // 1 set x concurrent frame
 
 		if (vkCreateDescriptorPool(m_Device, &poolInfo, nullptr, &m_DescPool) != VK_SUCCESS)
 		{
@@ -882,9 +888,9 @@ namespace VKP
 		inputInfo.primitiveRestartEnable = VK_FALSE;
 
 		m_Viewport.x = 0.0f;
-		m_Viewport.y = 0.0f;
-		m_Viewport.width = (float)m_SwapchainData.CurrentExtent.width;
-		m_Viewport.height = (float)m_SwapchainData.CurrentExtent.height;
+		m_Viewport.y = static_cast<float>(m_SwapchainData.CurrentExtent.height);
+		m_Viewport.width = static_cast<float>(m_SwapchainData.CurrentExtent.width);
+		m_Viewport.height = static_cast<float>(m_SwapchainData.CurrentExtent.height) * -1.0f;
 		m_Viewport.minDepth = 0.0f;
 		m_Viewport.maxDepth = 1.0f;
 
@@ -1167,7 +1173,7 @@ namespace VKP
 
 		vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DefaultPipeline);
 
-		glm::mat4 vp = glm::perspective(glm::radians(70.0f), m_AspectRatio, 0.1f, 100.0f) * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -3.0f));
+		glm::mat4 vp = glm::perspective(glm::radians(70.0f), m_AspectRatio, 0.1f, 100.0f);
 
 		vkCmdPushConstants(buffer, m_DefaultPipeLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &vp[0][0]);
 		vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DefaultPipeLayout, 0, 1, &m_DescSets[m_CurrentFrame], 0, nullptr);
