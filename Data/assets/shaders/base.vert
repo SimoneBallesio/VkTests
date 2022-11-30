@@ -1,6 +1,6 @@
 #version 450 core
 
-layout (location = 0) in vec2 aPosition;
+layout (location = 0) in vec3 aPosition;
 layout (location = 1) in vec3 aColor;
 layout (location = 2) in vec2 aTexCoord;
 
@@ -23,7 +23,7 @@ out vs_out
 
 void main()
 {
-	gl_Position = PushConstants.VP * UBO.M * vec4(aPosition, 0.0, 1.0);
+	gl_Position = PushConstants.VP * UBO.M * vec4(aPosition, 1.0);
 	Out.TexCoord = aTexCoord;
 	Out.Color = aColor;
 }

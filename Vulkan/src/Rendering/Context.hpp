@@ -26,6 +26,9 @@ namespace VKP
 		uint32_t Presentation = UINT32_MAX;
 		uint32_t Transfer = UINT32_MAX;
 
+		std::vector<uint32_t> ConcurrentQueues;
+		bool DedicatedTransferQueue = false;
+
 		bool AreValid() const;
 	};
 
@@ -55,25 +58,28 @@ namespace VKP
 
 		void OnResize(uint32_t width, uint32_t height);
 
+		void GetTransferQueueData(VkSharingMode* mode, uint32_t* numQueues, const uint32_t** queuesPtr);
+
 		Context& operator=(Context&) = delete;
 
 		static Context* Create();
 		static Context& Get();
 
+		static inline VkDevice GetDevice() { return s_Device; }
+		static inline VmaAllocator GetMemoryAllocator() { return s_Allocator; }
+
 	private:
 		VkInstance m_Instance = VK_NULL_HANDLE;
-
 		VkPhysicalDevice m_PhysDevice = VK_NULL_HANDLE;
-		VkDevice m_Device = VK_NULL_HANDLE;
-
-		VmaAllocator m_Allocator = VK_NULL_HANDLE;
-
 		VkSurfaceKHR m_Surface = VK_NULL_HANDLE;
 
 		SwapchainData m_SwapchainData = {};
 		VkSwapchainKHR m_Swapchain = VK_NULL_HANDLE;
 		std::vector<VkImage> m_SwapImages;
 		std::vector<VkImageView> m_SwapImageViews;
+		VkImage m_SwapDepthImage = VK_NULL_HANDLE;
+		VmaAllocation m_SwapDepthMemory = VK_NULL_HANDLE;
+		VkImageView m_SwapDepthView = VK_NULL_HANDLE;
 
 		VkViewport m_Viewport = {};
 		VkRect2D m_Scissor = {};
@@ -116,6 +122,9 @@ namespace VKP
 		float m_AspectRatio = 16.0f / 9.0f;
 		bool m_Resized = false;
 
+		static inline VkDevice s_Device = VK_NULL_HANDLE;
+		static inline VmaAllocator s_Allocator = VK_NULL_HANDLE;
+
 		static inline Context* s_Context = nullptr;
 
 		Context() = default;
@@ -127,6 +136,8 @@ namespace VKP
 		bool CreateDevice();
 
 		bool CreateMemoryAllocator();
+
+		bool CreateDepthResources();
 
 		bool CreateSwapchain();
 		bool RecreateSwapchain();
