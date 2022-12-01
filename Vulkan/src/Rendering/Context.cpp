@@ -177,17 +177,23 @@ namespace VKP
 
 	bool Context::CreateImage(Texture& texture, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage)
 	{
+		if (!(usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT))
+			texture.MipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1;
+
 		VkImageCreateInfo imgInfo = {};
 		imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 		imgInfo.arrayLayers = 1;
-		imgInfo.extent = {width, height, 1};
+		imgInfo.extent = { width, height, 1 };
 		imgInfo.format = format;
 		imgInfo.imageType = VK_IMAGE_TYPE_2D;
 		imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		imgInfo.mipLevels = 1;
+		imgInfo.mipLevels = texture.MipLevels;
 		imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 		imgInfo.tiling = tiling;
 		imgInfo.usage = usage;
+
+		if (texture.MipLevels == 1)
+			imgInfo.usage &= ~VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
 		GetTransferQueueData(&imgInfo.sharingMode, &imgInfo.queueFamilyIndexCount, &imgInfo.pQueueFamilyIndices);
 
@@ -209,8 +215,8 @@ namespace VKP
 			region.bufferImageHeight = 0;
 			region.bufferOffset = 0;
 			region.bufferRowLength = 0;
-			region.imageExtent = {width, height, 1};
-			region.imageOffset = {0, 0, 0};
+			region.imageExtent = { width, height, 1 };
+			region.imageOffset = { 0, 0, 0 };
 			region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 			region.imageSubresource.baseArrayLayer = 0;
 			region.imageSubresource.mipLevel = 0;
@@ -227,17 +233,69 @@ namespace VKP
 			barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 			barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 			barrier.subresourceRange.baseMipLevel = 0;
-			barrier.subresourceRange.levelCount = 1;
+			barrier.subresourceRange.levelCount = texture.MipLevels;
 			barrier.subresourceRange.baseArrayLayer = 0;
 			barrier.subresourceRange.layerCount = 1;
 
 			vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 			vkCmdCopyBufferToImage(cmdBuffer, staging.BufferHandle, texture.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
+			if (texture.MipLevels == 1)
+			{
+				barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+				barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+				barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+				barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+				vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+				return;
+			}
+
+			int32_t mipW = width, mipH = height;
+
+			for (size_t i = 1; i < texture.MipLevels; i++)
+			{
+				barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+				barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+				barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+				barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+				barrier.subresourceRange.baseMipLevel = i - 1;
+				barrier.subresourceRange.levelCount = 1; // One level at a time
+
+				vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+				VkImageBlit blit;
+				blit.srcOffsets[0] = { 0, 0, 0 };
+				blit.srcOffsets[1] = { mipW, mipH, 1 };
+				blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+				blit.srcSubresource.baseArrayLayer = 0;
+				blit.srcSubresource.layerCount = 1;
+				blit.srcSubresource.mipLevel = i - 1;
+				blit.dstOffsets[0] = { 0, 0, 0 };
+				blit.dstOffsets[1] = { mipW > 1 ? mipW / 2 : 1, mipH > 1 ? mipH / 2 : 1, 1 };
+				blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+				blit.dstSubresource.baseArrayLayer = 0;
+				blit.dstSubresource.layerCount = 1;
+				blit.dstSubresource.mipLevel = i;
+
+				vkCmdBlitImage(cmdBuffer, texture.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, texture.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+
+				barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+				barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+				barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+				barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+				vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+				if (mipW > 1) mipW /= 2;
+				if (mipH > 1) mipH /= 2;
+			}
+
 			barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 			barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 			barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			barrier.subresourceRange.baseMipLevel = texture.MipLevels - 1;
 
 			vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 		};
@@ -260,7 +318,7 @@ namespace VKP
 		viewInfo.subresourceRange.baseArrayLayer = 0;
 		viewInfo.subresourceRange.layerCount = 1;
 		viewInfo.subresourceRange.baseMipLevel = 0;
-		viewInfo.subresourceRange.levelCount = 1;
+		viewInfo.subresourceRange.levelCount = texture.MipLevels;
 
 		VkResult result = vkCreateImageView(s_Device, &viewInfo, nullptr, &texture.ViewHandle);
 		VK_CHECK_RESULT(result);
@@ -286,7 +344,7 @@ namespace VKP
 		samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 		samplerInfo.mipLodBias = 0.0f;
 		samplerInfo.minLod = 0.0f;
-		samplerInfo.maxLod = 0.0f;
+		samplerInfo.maxLod = VK_LOD_CLAMP_NONE; // Expands to 1000.0f
 
 		if (vkCreateSampler(s_Device, &samplerInfo, nullptr, &texture.SamplerHandle) != VK_SUCCESS)
 		{
@@ -1512,7 +1570,7 @@ namespace VKP
 
 		stbi_image_free(data);
 
-		if (!CreateImage(m_ObjTexture, w, h, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT))
+		if (!CreateImage(m_ObjTexture, w, h, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT))
 		{
 			VKP_ERROR("Unable to create image object");
 			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);

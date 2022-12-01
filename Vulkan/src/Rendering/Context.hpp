@@ -20,6 +20,7 @@ namespace VKP
 		VkImageView ViewHandle = VK_NULL_HANDLE;
 		VkSampler SamplerHandle = VK_NULL_HANDLE;
 		VmaAllocation MemoryHandle = VK_NULL_HANDLE;
+		uint32_t MipLevels = 1;
 	};
 
 	struct QueueIndices
