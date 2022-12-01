@@ -54,6 +54,17 @@ namespace VKP
 		bool BeforeWindowCreation();
 		bool AfterWindowCreation();
 
+		bool CreateBuffer(Buffer &buffer, VkDeviceSize size, VkBufferUsageFlags bufferUsage, VmaAllocationCreateFlags memoryFlags);
+		bool CopyBuffer(const Buffer &src, const Buffer &dst, VkDeviceSize size);
+
+		bool CreateImage(Texture& texture, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage);
+		bool PopulateImage(Texture& texture, Buffer &staging, uint32_t width, uint32_t height);
+		bool CreateImageView(Texture& texture, VkFormat format, VkImageAspectFlags aspectFlags);
+		bool CreateImageSampler(Texture& texture);
+
+		bool SubmitTransfer(const std::function<void(VkCommandBuffer)>& fn);
+		bool SubmitRender(const std::function<void(VkCommandBuffer)>& fn);
+
 		void SwapBuffers();
 
 		void OnResize(uint32_t width, uint32_t height);
@@ -75,11 +86,8 @@ namespace VKP
 
 		SwapchainData m_SwapchainData = {};
 		VkSwapchainKHR m_Swapchain = VK_NULL_HANDLE;
-		std::vector<VkImage> m_SwapImages;
-		std::vector<VkImageView> m_SwapImageViews;
-		VkImage m_SwapDepthImage = VK_NULL_HANDLE;
-		VmaAllocation m_SwapDepthMemory = VK_NULL_HANDLE;
-		VkImageView m_SwapDepthView = VK_NULL_HANDLE;
+		std::vector<Texture> m_SwapImages;
+		Texture m_SwapDepth = {};
 
 		VkViewport m_Viewport = {};
 		VkRect2D m_Scissor = {};
@@ -165,12 +173,8 @@ namespace VKP
 		bool CreateIndexBuffer();
 		bool CreateTestTexture();
 		bool CreateTestTextureView();
-		bool CreateTestTextureSampler();
 
-		bool RecordCommandBuffer(const VkCommandBuffer& buffer, size_t imageId);
-
-		bool CreateBuffer(Buffer& buffer, VkDeviceSize size, VkBufferUsageFlags bufferUsage, VmaAllocationCreateFlags memoryFlags);
-		bool CopyBuffer(const Buffer& src, const Buffer& dst, VkDeviceSize size);
+		bool RecordCommandBuffer(VkCommandBuffer buffer, size_t imageId);
 
 		VkExtent2D ChooseExtents() const;
 		VkSurfaceFormatKHR ChooseSurfaceFormat() const;

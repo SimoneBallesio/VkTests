@@ -4,6 +4,7 @@
 #include "Core/Window.hpp"
 
 #include "Rendering/Context.hpp"
+#include "Rendering/VertexData.hpp"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
@@ -123,7 +124,7 @@ namespace VKP
 
 		if (success) success = CreateTestTexture();
 		if (success) success = CreateTestTextureView();
-		if (success) success = CreateTestTextureSampler();
+		if (success) success = CreateImageSampler(m_TestTexture);
 
 		if (success) success = CreateUniformBuffers();
 
@@ -136,6 +137,228 @@ namespace VKP
 		if (success) success = CreateIndexBuffer();
 
 		return success;
+	}
+
+	bool Context::CreateBuffer(Buffer& buffer, VkDeviceSize size, VkBufferUsageFlags bufferUsage, VmaAllocationCreateFlags memoryFlags)
+	{
+		VkBufferCreateInfo bufInfo = {};
+		bufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufInfo.size = size;
+		bufInfo.usage = bufferUsage;
+
+		GetTransferQueueData(&bufInfo.sharingMode, &bufInfo.queueFamilyIndexCount, &bufInfo.pQueueFamilyIndices);
+
+		VmaAllocationCreateInfo memInfo = {};
+		memInfo.usage = VMA_MEMORY_USAGE_AUTO;
+		memInfo.flags = memoryFlags;
+
+		if (vmaCreateBuffer(s_Allocator, &bufInfo, &memInfo, &buffer.BufferHandle, &buffer.MemoryHandle, nullptr) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to create buffer");
+			return false;
+		}
+
+		return true;
+	}
+
+	bool Context::CopyBuffer(const Buffer& src, const Buffer& dst, VkDeviceSize size)
+	{
+		const std::function<void(VkCommandBuffer)> fn = [&](VkCommandBuffer cmdBuffer)
+		{
+			VkBufferCopy region = {};
+			region.srcOffset = 0;
+			region.dstOffset = 0;
+			region.size = size;
+
+			vkCmdCopyBuffer(cmdBuffer, src.BufferHandle, dst.BufferHandle, 1, &region);
+		};
+
+		return SubmitTransfer(fn);
+	}
+
+	bool Context::CreateImage(Texture& texture, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage)
+	{
+		VkImageCreateInfo imgInfo = {};
+		imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imgInfo.arrayLayers = 1;
+		imgInfo.extent = {width, height, 1};
+		imgInfo.format = format;
+		imgInfo.imageType = VK_IMAGE_TYPE_2D;
+		imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		imgInfo.mipLevels = 1;
+		imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+		imgInfo.tiling = tiling;
+		imgInfo.usage = usage;
+
+		GetTransferQueueData(&imgInfo.sharingMode, &imgInfo.queueFamilyIndexCount, &imgInfo.pQueueFamilyIndices);
+
+		VmaAllocationCreateInfo memInfo = {};
+		memInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+		memInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+
+		VkResult result = vmaCreateImage(s_Allocator, &imgInfo, &memInfo, &texture.ImageHandle, &texture.MemoryHandle, nullptr);
+		VK_CHECK_RESULT(result);
+
+		return VK_SUCCESS == result;
+	}
+
+	bool Context::PopulateImage(Texture& texture, Buffer& staging, uint32_t width, uint32_t height)
+	{
+		const std::function<void(VkCommandBuffer)> fn = [&](VkCommandBuffer cmdBuffer)
+		{
+			VkBufferImageCopy region = {};
+			region.bufferImageHeight = 0;
+			region.bufferOffset = 0;
+			region.bufferRowLength = 0;
+			region.imageExtent = {width, height, 1};
+			region.imageOffset = {0, 0, 0};
+			region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			region.imageSubresource.baseArrayLayer = 0;
+			region.imageSubresource.mipLevel = 0;
+			region.imageSubresource.layerCount = 1;
+
+			VkImageMemoryBarrier barrier = {};
+			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			barrier.image = texture.ImageHandle;
+			barrier.srcAccessMask = 0;
+			barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			barrier.subresourceRange.baseMipLevel = 0;
+			barrier.subresourceRange.levelCount = 1;
+			barrier.subresourceRange.baseArrayLayer = 0;
+			barrier.subresourceRange.layerCount = 1;
+
+			vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+			vkCmdCopyBufferToImage(cmdBuffer, staging.BufferHandle, texture.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+			barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+			barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+			vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+		};
+
+		return SubmitTransfer(fn);
+	}
+
+	bool Context::CreateImageView(Texture& texture, VkFormat format, VkImageAspectFlags aspectFlags)
+	{
+		VkImageViewCreateInfo viewInfo = {};
+		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.image = texture.ImageHandle;
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		viewInfo.format = format;
+		viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewInfo.subresourceRange.aspectMask = aspectFlags;
+		viewInfo.subresourceRange.baseArrayLayer = 0;
+		viewInfo.subresourceRange.layerCount = 1;
+		viewInfo.subresourceRange.baseMipLevel = 0;
+		viewInfo.subresourceRange.levelCount = 1;
+
+		VkResult result = vkCreateImageView(s_Device, &viewInfo, nullptr, &texture.ViewHandle);
+		VK_CHECK_RESULT(result);
+
+		return VK_SUCCESS == result;
+	}
+
+	bool Context::CreateImageSampler(Texture& texture)
+	{
+		VkSamplerCreateInfo samplerInfo = {};
+		samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+		samplerInfo.unnormalizedCoordinates = VK_FALSE;
+		samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.anisotropyEnable = VK_FALSE;
+		samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+		samplerInfo.compareEnable = VK_FALSE;
+		samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+		samplerInfo.minFilter = VK_FILTER_LINEAR;
+		samplerInfo.magFilter = VK_FILTER_LINEAR;
+		samplerInfo.maxAnisotropy = 1.0f;
+		samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		samplerInfo.mipLodBias = 0.0f;
+		samplerInfo.minLod = 0.0f;
+		samplerInfo.maxLod = 0.0f;
+
+		if (vkCreateSampler(s_Device, &samplerInfo, nullptr, &texture.SamplerHandle) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to create sampler for test texture");
+			return false;
+		}
+
+		return true;
+	}
+
+	bool Context::SubmitTransfer(const std::function<void(VkCommandBuffer)>& fn)
+	{
+		VkCommandBuffer cmdBuffer = VK_NULL_HANDLE;
+
+		VkCommandBufferAllocateInfo bufInfo = {};
+		bufInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		bufInfo.commandPool = m_TransferPool;
+		bufInfo.commandBufferCount = 1;
+		bufInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+		VkResult result = vkAllocateCommandBuffers(s_Device, &bufInfo, &cmdBuffer);
+		VK_CHECK_RESULT(result);
+
+		if (result != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to allocate transfer command buffer");
+			return false;
+		}
+
+		VkCommandBufferBeginInfo begInfo = {};
+		begInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		begInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		result = vkBeginCommandBuffer(cmdBuffer, &begInfo);
+		VK_CHECK_RESULT(result);
+
+		if (result != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to begin transfer command recording");
+			vkFreeCommandBuffers(s_Device, m_TransferPool, 1, &cmdBuffer);
+			return false;
+		}
+
+		fn(cmdBuffer);
+
+		result = vkEndCommandBuffer(cmdBuffer);
+		VK_CHECK_RESULT(result);
+
+		if (result != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to end transfer command buffer");
+			return false;
+		}
+
+		VkSubmitInfo endInfo = {};
+		endInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		endInfo.pCommandBuffers = &cmdBuffer;
+		endInfo.commandBufferCount = 1;
+
+		result = vkQueueSubmit(m_TransferQueue, 1, &endInfo, VK_NULL_HANDLE);
+		VK_CHECK_RESULT(result);
+
+		if (result != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to submit transfer command buffer to queue");
+			return false;
+		}
+
+		vkQueueWaitIdle(m_TransferQueue); // TODO: Fence
+
+		return true;
 	}
 
 	void Context::SwapBuffers()
@@ -162,18 +385,6 @@ namespace VKP
 		vkResetCommandBuffer(m_CmdBuffer[m_CurrentFrame], 0);
 
 		RecordCommandBuffer(m_CmdBuffer[m_CurrentFrame], imageId);
-
-		static auto startTime = std::chrono::high_resolution_clock::now();
-		auto currentTime = std::chrono::high_resolution_clock::now();
-		float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-		glm::mat4 M = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)) *
-			glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-
-		void* data = nullptr;
-		vmaMapMemory(s_Allocator, m_UniformBuffers[m_CurrentFrame].MemoryHandle, &data);
-		memcpy(data, &M[0][0], sizeof(glm::mat4));
-		vmaUnmapMemory(s_Allocator, m_UniformBuffers[m_CurrentFrame].MemoryHandle);
 
 		const VkPipelineStageFlags stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 
@@ -519,53 +730,10 @@ namespace VKP
 
 	bool Context::CreateDepthResources()
 	{
-		VkImageCreateInfo imgInfo = {};
-		imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-		imgInfo.imageType = VK_IMAGE_TYPE_2D;
-		imgInfo.format = VK_FORMAT_D32_SFLOAT_S8_UINT;
-		imgInfo.arrayLayers = 1;
-		imgInfo.extent = { m_SwapchainData.CurrentExtent.width, m_SwapchainData.CurrentExtent.height, 1 };
-		imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		imgInfo.mipLevels = 1;
-		imgInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-		imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-		imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-		imgInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+		bool success = CreateImage(m_SwapDepth, m_SwapchainData.CurrentExtent.width, m_SwapchainData.CurrentExtent.height, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+		if (success) success = CreateImageView(m_SwapDepth, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_IMAGE_ASPECT_DEPTH_BIT);
 
-		VmaAllocationCreateInfo memInfo = {};
-		memInfo.usage = VMA_MEMORY_USAGE_AUTO;
-		memInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-
-		VkResult result = vmaCreateImage(s_Allocator, &imgInfo, &memInfo, &m_SwapDepthImage, &m_SwapDepthMemory, nullptr);
-
-		if (result != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to create depth image");
-			return false;
-		}
-
-		VkImageViewCreateInfo viewInfo = {};
-		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		viewInfo.image = m_SwapDepthImage;
-		viewInfo.format = VK_FORMAT_D32_SFLOAT_S8_UINT;
-		viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-		viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-		viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-		viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-		viewInfo.subresourceRange.baseArrayLayer = 0;
-		viewInfo.subresourceRange.layerCount = 1;
-		viewInfo.subresourceRange.baseMipLevel = 0;
-		viewInfo.subresourceRange.levelCount = 1;
-
-		if (vkCreateImageView(s_Device, &viewInfo, nullptr, &m_SwapDepthView) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to create depth image view");
-			return false;
-		}
-
-		return true;
+		return success;
 	}
 
 	bool Context::CreateSwapchain()
@@ -647,17 +815,17 @@ namespace VKP
 
 	void Context::DestroySwapchain()
 	{
-		if (m_SwapDepthView != VK_NULL_HANDLE)
-			vkDestroyImageView(s_Device, m_SwapDepthView, nullptr);
+		if (m_SwapDepth.ViewHandle != VK_NULL_HANDLE)
+			vkDestroyImageView(s_Device, m_SwapDepth.ViewHandle, nullptr);
 
-		if (m_SwapDepthImage != VK_NULL_HANDLE)
-			vmaDestroyImage(s_Allocator, m_SwapDepthImage, m_SwapDepthMemory);
+		if (m_SwapDepth.ImageHandle != VK_NULL_HANDLE)
+			vmaDestroyImage(s_Allocator, m_SwapDepth.ImageHandle, m_SwapDepth.MemoryHandle);
 
 		for (auto& f : m_DefaultFramebuffers)
 			vkDestroyFramebuffer(s_Device, f, nullptr);
 
-		for (auto& i : m_SwapImageViews)
-			vkDestroyImageView(s_Device, i, nullptr);
+		for (auto& i : m_SwapImages)
+			vkDestroyImageView(s_Device, i.ViewHandle, nullptr);
 
 		if (m_Swapchain != VK_NULL_HANDLE)
 			vkDestroySwapchainKHR(s_Device, m_Swapchain, nullptr);
@@ -668,38 +836,23 @@ namespace VKP
 		uint32_t count = 0;
 		vkGetSwapchainImagesKHR(s_Device, m_Swapchain, &count, nullptr);
 
+		std::vector<VkImage> images(count);
 		m_SwapImages.resize(count);
-		m_SwapImageViews.resize(count);
 
-		vkGetSwapchainImagesKHR(s_Device, m_Swapchain, &count, m_SwapImages.data());
+		vkGetSwapchainImagesKHR(s_Device, m_Swapchain, &count, images.data());
 
 		std::vector<VkImageViewCreateInfo> viewInfos(count);
 
-		size_t i = 0;
-
-		for (auto& viewInfo : viewInfos)
+		for (size_t i = 0; i < count; i++)
 		{
-			viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-			viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-			viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-			viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-			viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-			viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-			viewInfo.format = m_SwapchainData.Format.format;
-			viewInfo.subresourceRange.baseArrayLayer = 0;
-			viewInfo.subresourceRange.layerCount = 1;
-			viewInfo.subresourceRange.baseMipLevel = 0;
-			viewInfo.subresourceRange.levelCount = 1;
-			viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			viewInfo.image = m_SwapImages[i];
+			auto& t = m_SwapImages[i];
+			t.ImageHandle = images[i];
 
-			if (vkCreateImageView(s_Device, &viewInfo, nullptr, &m_SwapImageViews[i]) != VK_SUCCESS)
+			if (!CreateImageView(t, m_SwapchainData.Format.format, VK_IMAGE_ASPECT_COLOR_BIT))
 			{
 				VKP_ERROR("Unable to create Vulkan swapchain image view #{}", i);
 				return false;
 			}
-
-			i++;
 		}
 
 		return true;
@@ -772,11 +925,11 @@ namespace VKP
 
 	bool Context::CreateFramebuffers()
 	{
-		m_DefaultFramebuffers.resize(m_SwapImageViews.size());
+		m_DefaultFramebuffers.resize(m_SwapImages.size());
 
 		for (size_t i = 0; i < m_DefaultFramebuffers.size(); i++)
 		{
-			std::vector<VkImageView> views = { m_SwapImageViews[i], m_SwapDepthView };
+			std::vector<VkImageView> views = { m_SwapImages[i].ViewHandle, m_SwapDepth.ViewHandle };
 			VkFramebufferCreateInfo frameInfo = {};
 			frameInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 			frameInfo.pAttachments = views.data();
@@ -995,7 +1148,7 @@ namespace VKP
 		VkVertexInputBindingDescription vertBind = {};
 		vertBind.binding = 0;
 		vertBind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-		vertBind.stride = 8 * sizeof(float);
+		vertBind.stride = sizeof(Vertex);
 
 		std::vector<VkVertexInputAttributeDescription> descriptions;
 		descriptions.reserve(3);
@@ -1004,19 +1157,19 @@ namespace VKP
 		posDesc.format = VK_FORMAT_R32G32B32_SFLOAT;
 		posDesc.location = 0;
 		posDesc.binding = 0;
-		posDesc.offset = 0;
+		posDesc.offset = offsetof(Vertex, Position);
 
 		auto& colDesc = descriptions.emplace_back();
 		colDesc.format = VK_FORMAT_R32G32B32_SFLOAT;
 		colDesc.location = 1;
 		colDesc.binding = 0;
-		colDesc.offset = 3 * sizeof(float);
+		colDesc.offset = offsetof(Vertex, Color);
 
 		auto& texDesc = descriptions.emplace_back();
 		texDesc.format = VK_FORMAT_R32G32_SFLOAT;
 		texDesc.location = 2;
 		texDesc.binding = 0;
-		texDesc.offset = 6 * sizeof(float);
+		texDesc.offset = offsetof(Vertex, TexCoord);
 
 		VkPipelineVertexInputStateCreateInfo vertInfo = {};
 		vertInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -1322,182 +1475,39 @@ namespace VKP
 
 		stbi_image_free(data);
 
-		VkImageFormatProperties props;
-		vkGetPhysicalDeviceImageFormatProperties(m_PhysDevice, VK_FORMAT_R8G8B8_SRGB, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 0, &props);
-
-		VkImageCreateInfo imgInfo = {};
-		imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-		imgInfo.imageType = VK_IMAGE_TYPE_2D;
-		imgInfo.extent.width = w;
-		imgInfo.extent.height = h;
-		imgInfo.extent.depth = 1;
-		imgInfo.mipLevels = 1;
-		imgInfo.arrayLayers = 1;
-		imgInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
-		imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-		imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		imgInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-		imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-
-		GetTransferQueueData(&imgInfo.sharingMode, &imgInfo.queueFamilyIndexCount, &imgInfo.pQueueFamilyIndices);
-
-		VmaAllocationCreateInfo memInfo = {};
-		memInfo.usage = VMA_MEMORY_USAGE_AUTO;
-		memInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-
-		if (vmaCreateImage(s_Allocator, &imgInfo, &memInfo, &m_TestTexture.ImageHandle, &m_TestTexture.MemoryHandle, nullptr) != VK_SUCCESS)
+		if (!CreateImage(m_TestTexture, w, h, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT))
 		{
 			VKP_ERROR("Unable to create image object");
 			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
 			return false;
 		}
 
-		VkCommandBuffer cmdBuffer = VK_NULL_HANDLE;
+		bool success = PopulateImage(m_TestTexture, staging, w, h);
 
-		VkCommandBufferAllocateInfo cmdBufferInfo = {};
-		cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-		cmdBufferInfo.commandPool = m_TransferPool;
-		cmdBufferInfo.commandBufferCount = 1;
-		cmdBufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-
-		if (vkAllocateCommandBuffers(s_Device, &cmdBufferInfo, &cmdBuffer) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to allocate command buffer for buffer > image transfer");
-			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
-			return false;
-		}
-
-		VkCommandBufferBeginInfo begInfo = {};
-		begInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		begInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-		if (vkBeginCommandBuffer(cmdBuffer, &begInfo) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to begin command buffer for buffer > image transfer");
-			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
-			return false;
-		}
-
-		VkBufferImageCopy region = {};
-		region.bufferImageHeight = 0;
-		region.bufferOffset = 0;
-		region.bufferRowLength = 0;
-		region.imageExtent = { (uint32_t)w, (uint32_t)h, 1 };
-		region.imageOffset = { 0, 0, 0 };
-		region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		region.imageSubresource.baseArrayLayer = 0;
-		region.imageSubresource.mipLevel = 0;
-		region.imageSubresource.layerCount = 1;
-
-		VkImageMemoryBarrier barrier = {};
-		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		barrier.image = m_TestTexture.ImageHandle;
-		barrier.srcAccessMask = 0;
-		barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-		barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		barrier.subresourceRange.baseMipLevel = 0;
-		barrier.subresourceRange.levelCount = 1;
-		barrier.subresourceRange.baseArrayLayer = 0;
-		barrier.subresourceRange.layerCount = 1;
-
-		vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
-		vkCmdCopyBufferToImage(cmdBuffer, staging.BufferHandle, m_TestTexture.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-
-		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-		barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-		vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
-
-		if (vkEndCommandBuffer(cmdBuffer) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to end command buffer for buffer > image transfer");
-			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
-			return false;
-		}
-
-		VkSubmitInfo endInfo = {};
-		endInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		endInfo.pCommandBuffers = &cmdBuffer;
-		endInfo.commandBufferCount = 1;
-
-		if (vkQueueSubmit(m_TransferQueue, 1, &endInfo, VK_NULL_HANDLE) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to submit queue for buffer > image transfer");
-			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
-			return false;
-		}
-
-		vkQueueWaitIdle(m_TransferQueue);
-
-		vkFreeCommandBuffers(s_Device, m_TransferPool, 1, &cmdBuffer);
 		vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
 
-		return true;
+		return success;
 	}
 
 	bool Context::CreateTestTextureView()
 	{
-		VkImageViewCreateInfo viewInfo = {};
-		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		viewInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
-		viewInfo.image = m_TestTexture.ImageHandle;
-		viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-		viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-		viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-		viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		viewInfo.subresourceRange.baseArrayLayer = 0;
-		viewInfo.subresourceRange.layerCount = 1;
-		viewInfo.subresourceRange.baseMipLevel = 0;
-		viewInfo.subresourceRange.levelCount = 1;
-
-		if (vkCreateImageView(s_Device, &viewInfo, nullptr, &m_TestTexture.ViewHandle) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to create image view for test texture");
-			return false;
-		}
-
-		return true;
+		return CreateImageView(m_TestTexture, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 	}
 
-	bool Context::CreateTestTextureSampler()
+	bool Context::RecordCommandBuffer(VkCommandBuffer buffer, size_t imageId)
 	{
-		VkSamplerCreateInfo samplerInfo = {};
-		samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-		samplerInfo.unnormalizedCoordinates = VK_FALSE;
-		samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-		samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-		samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-		samplerInfo.anisotropyEnable = VK_FALSE;
-		samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-		samplerInfo.compareEnable = VK_FALSE;
-		samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-		samplerInfo.minFilter = VK_FILTER_LINEAR;
-		samplerInfo.magFilter = VK_FILTER_LINEAR;
-		samplerInfo.maxAnisotropy = 1.0f;
-		samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-		samplerInfo.mipLodBias = 0.0f;
-		samplerInfo.minLod = 0.0f;
-		samplerInfo.maxLod = 0.0f;
+		static auto startTime = std::chrono::high_resolution_clock::now();
+		auto currentTime = std::chrono::high_resolution_clock::now();
+		float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-		if (vkCreateSampler(s_Device, &samplerInfo, nullptr, &m_TestTexture.SamplerHandle) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to create sampler for test texture");
-			return false;
-		}
+		glm::mat4 M = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)) *
+									glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
-		return true;
-	}
+		void *data = nullptr;
+		vmaMapMemory(s_Allocator, m_UniformBuffers[m_CurrentFrame].MemoryHandle, &data);
+		memcpy(data, &M[0][0], sizeof(glm::mat4));
+		vmaUnmapMemory(s_Allocator, m_UniformBuffers[m_CurrentFrame].MemoryHandle);
 
-	bool Context::RecordCommandBuffer(const VkCommandBuffer& buffer, size_t imageId)
-	{
 		VkCommandBufferBeginInfo cmdInfo = {};
 		cmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 		cmdInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -1510,8 +1520,8 @@ namespace VKP
 
 		std::vector<VkClearValue> clearColors(2);
 
-		clearColors[0].color = {{ 0.1f, 0.1f, 0.1f, 1.0f }};
-		clearColors[1].depthStencil = { 1.0f, 0 };
+		clearColors[0].color = {{0.1f, 0.1f, 0.1f, 1.0f}};
+		clearColors[1].depthStencil = {1.0f, 0};
 
 		VkRenderPassBeginInfo passInfo = {};
 		passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -1527,12 +1537,12 @@ namespace VKP
 		vkCmdSetViewport(buffer, 0, 1, &m_Viewport);
 		vkCmdSetScissor(buffer, 0, 1, &m_Scissor);
 
+		vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DefaultPipeline);
+
 		VkDeviceSize offset = 0;
 		vkCmdBindVertexBuffers(buffer, 0, 1, &m_VertexBuffer.BufferHandle, &offset);
 
 		vkCmdBindIndexBuffer(buffer, m_IndexBuffer.BufferHandle, offset, VK_INDEX_TYPE_UINT32);
-
-		vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DefaultPipeline);
 
 		glm::mat4 vp = glm::perspective(glm::radians(45.0f), m_AspectRatio, 0.1f, 100.0f);
 
@@ -1548,85 +1558,6 @@ namespace VKP
 			VKP_ERROR("Unable to end command buffer");
 			return false;
 		}
-
-		return true;
-	}
-
-	bool Context::CreateBuffer(Buffer& buffer, VkDeviceSize size, VkBufferUsageFlags bufferUsage, VmaAllocationCreateFlags memoryFlags)
-	{
-		VkBufferCreateInfo bufInfo = {};
-		bufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-		bufInfo.size = size;
-		bufInfo.usage = bufferUsage;
-
-		GetTransferQueueData(&bufInfo.sharingMode, &bufInfo.queueFamilyIndexCount, &bufInfo.pQueueFamilyIndices);
-
-		VmaAllocationCreateInfo memInfo = {};
-		memInfo.usage = VMA_MEMORY_USAGE_AUTO;
-		memInfo.flags = memoryFlags;
-
-		if (vmaCreateBuffer(s_Allocator, &bufInfo, &memInfo, &buffer.BufferHandle, &buffer.MemoryHandle, nullptr) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to create buffer");
-			return false;
-		}
-
-		return true;
-	}
-
-	bool Context::CopyBuffer(const Buffer& src, const Buffer& dst, VkDeviceSize size)
-	{
-		VkCommandBuffer copyBuffer = VK_NULL_HANDLE;
-
-		VkCommandBufferAllocateInfo bufInfo = {};
-		bufInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-		bufInfo.commandPool = m_TransferPool;
-		bufInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		bufInfo.commandBufferCount = 1;
-
-		if (vkAllocateCommandBuffers(s_Device, &bufInfo, &copyBuffer) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to allocate buffer transfer command pool");
-			return false;
-		}
-
-		VkCommandBufferBeginInfo begInfo = {};
-		begInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		begInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-		if (vkBeginCommandBuffer(copyBuffer, &begInfo) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to begin copy command buffer");
-			return false;
-		}
-
-		VkBufferCopy region = {};
-		region.srcOffset = 0;
-		region.dstOffset = 0;
-		region.size = size;
-
-		vkCmdCopyBuffer(copyBuffer, src.BufferHandle, dst.BufferHandle, 1, &region);
-
-		if (vkEndCommandBuffer(copyBuffer) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to end copy command buffer");
-			return false;
-		}
-
-		VkSubmitInfo submitInfo = {};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &copyBuffer;
-
-		if (vkQueueSubmit(m_TransferQueue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to submit copy buffer commands to transfer queue");
-			return false;
-		}
-
-		vkQueueWaitIdle(m_TransferQueue);
-
-		vkFreeCommandBuffers(s_Device, m_TransferPool, 1, &copyBuffer);
 
 		return true;
 	}

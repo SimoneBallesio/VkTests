@@ -30,6 +30,8 @@ namespace VKP
 
 		const char* GetTitle() const;
 
+		double GetTime() const;
+
 		void PollEvents();
 
 		void* GetNativeHandle() const;

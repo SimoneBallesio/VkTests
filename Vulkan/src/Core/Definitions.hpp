@@ -30,6 +30,15 @@
 #define VKP_ERROR(...)		{ VKP::Log::GetLogger()->error(__VA_ARGS__); }
 #define VKP_ASSERT(x, ...)	{ if (!x) { VKP_ERROR(__VA_ARGS__); DEBUGBREAK(); } }
 
+#define VK_CHECK_RESULT(f) \
+{ \
+	VkResult res = (f); \
+	if (res != VK_SUCCESS) \
+	{ \
+		VKP_ERROR("VkResult unsuccessful in {0} at line {1}", __FILE__, __LINE__); \
+	} \
+}
+
 #else
 
 #define DEBUGBREAK()
@@ -40,16 +49,9 @@
 #define VKP_ERROR(...)
 #define VKP_ASSERT(x, ...)
 
-#endif
+#define VK_CHECK_RESULT(f)
 
-#define VK_CHECK_RESULT(f) \
-{ \
-	VkResult res = (f); \
-	if (res != VK_SUCCESS) \
-	{ \
-		VKP_ERROR("VkResult unsuccessful in {0} at line {1}", __FILE__, __LINE__); \
-	} \
-}
+#endif
 
 #if defined(VKP_PLATFORM_WINDOWS)
 #define VK_USE_PLATFORM_WIN32_KHR

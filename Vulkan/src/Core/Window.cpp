@@ -54,6 +54,12 @@ namespace VKP
 		return m_Data.Title.c_str();
 	}
 
+	double Window::GetTime() const
+	{
+		uint64_t steps = SDL_GetTicks64();
+		return static_cast<double>(steps) / 1000.0;
+	}
+
 	void Window::PollEvents()
 	{
 		SDL_Event e;
