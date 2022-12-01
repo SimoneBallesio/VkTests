@@ -21,12 +21,16 @@ find_package(SDL2 REQUIRED)
 target_link_libraries(Vulkan PRIVATE ${SDL2_LIBRARIES})
 target_include_directories(Vulkan PRIVATE ${SDL2_INCLUDE_DIRS})
 
-# GLM
-set(GLM_TEST_ENABLE OFF CACHE BOOL "" FORCE)
-
 # stb_image
 target_include_directories(Vulkan PRIVATE ${VKP_LIBRARIES_ROOT}/stb_image)
 
+# tinyobjloader
+add_subdirectory(${VKP_LIBRARIES_ROOT}/tinyobjloader)
+target_include_directories(Vulkan PRIVATE ${VKP_LIBRARIES_ROOT}/tinyobjloader)
+target_link_libraries(Vulkan PRIVATE tinyobjloader)
+
+# GLM
+set(GLM_TEST_ENABLE OFF CACHE BOOL "" FORCE)
 add_subdirectory(${VKP_LIBRARIES_ROOT}/glm)
 target_include_directories(Vulkan PRIVATE ${VKP_LIBRARIES_ROOT}/glm)
 target_link_libraries(Vulkan PRIVATE glm)

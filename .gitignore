@@ -16,6 +16,7 @@
 # Asset files
 Data/assets/fonts
 Data/assets/textures
+Data/assets/models
 Data/**/*.txt
 Data/**/*.spv
 

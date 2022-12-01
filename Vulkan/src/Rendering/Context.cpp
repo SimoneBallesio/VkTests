@@ -4,7 +4,6 @@
 #include "Core/Window.hpp"
 
 #include "Rendering/Context.hpp"
-#include "Rendering/VertexData.hpp"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
@@ -13,11 +12,15 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <tiny_obj_loader.h>
 #include <stb_image.h>
 
 #include <fstream>
 
 #define MAX_CONCURRENT_FRAMES 2
+
+#define OBJ_TEXTURE_PATH "assets/models/viking_room.png"
+#define OBJ_MODEL_PATH "assets/models/viking_room.obj"
 
 namespace VKP
 {
@@ -36,11 +39,11 @@ namespace VKP
 	{
 		vkDeviceWaitIdle(s_Device);
 
-		if (m_TestTexture.ImageHandle != VK_NULL_HANDLE)
+		if (m_ObjTexture.ImageHandle != VK_NULL_HANDLE)
 		{
-			vkDestroySampler(s_Device, m_TestTexture.SamplerHandle, nullptr);
-			vkDestroyImageView(s_Device, m_TestTexture.ViewHandle, nullptr);
-			vmaDestroyImage(s_Allocator, m_TestTexture.ImageHandle, m_TestTexture.MemoryHandle);
+			vkDestroySampler(s_Device, m_ObjTexture.SamplerHandle, nullptr);
+			vkDestroyImageView(s_Device, m_ObjTexture.ViewHandle, nullptr);
+			vmaDestroyImage(s_Allocator, m_ObjTexture.ImageHandle, m_ObjTexture.MemoryHandle);
 		}
 
 		if (m_DescPool != VK_NULL_HANDLE)
@@ -55,11 +58,11 @@ namespace VKP
 				vmaDestroyBuffer(s_Allocator, b.BufferHandle, b.MemoryHandle);
 		}
 
-		if (m_VertexBuffer.BufferHandle != VK_NULL_HANDLE)
-			vmaDestroyBuffer(s_Allocator, m_VertexBuffer.BufferHandle, m_VertexBuffer.MemoryHandle);
+		if (m_ObjVBO.BufferHandle != VK_NULL_HANDLE)
+			vmaDestroyBuffer(s_Allocator, m_ObjVBO.BufferHandle, m_ObjVBO.MemoryHandle);
 
-		if (m_IndexBuffer.BufferHandle != VK_NULL_HANDLE)
-			vmaDestroyBuffer(s_Allocator, m_IndexBuffer.BufferHandle, m_IndexBuffer.MemoryHandle);
+		if (m_ObjIBO.BufferHandle != VK_NULL_HANDLE)
+			vmaDestroyBuffer(s_Allocator, m_ObjIBO.BufferHandle, m_ObjIBO.MemoryHandle);
 
 		for (size_t i = 0; i < MAX_CONCURRENT_FRAMES; i++)
 		{
@@ -122,9 +125,8 @@ namespace VKP
 		if (success) success = AllocateCommandBuffer();
 		if (success) success = CreateSyncObjects();
 
-		if (success) success = CreateTestTexture();
-		if (success) success = CreateTestTextureView();
-		if (success) success = CreateImageSampler(m_TestTexture);
+		if (success) success = LoadObjModel();
+		if (success) success = LoadObjTexture();
 
 		if (success) success = CreateUniformBuffers();
 
@@ -132,9 +134,6 @@ namespace VKP
 		if (success) success = CreateDescriptorPool();
 		if (success) success = AllocateDescriptorSets();
 		if (success) success = CreatePipeline();
-
-		if (success) success = CreateVertexBuffer();
-		if (success) success = CreateIndexBuffer();
 
 		return success;
 	}
@@ -1053,8 +1052,8 @@ namespace VKP
 
 			VkDescriptorImageInfo imgInfo = {};
 			imgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			imgInfo.imageView = m_TestTexture.ViewHandle;
-			imgInfo.sampler = m_TestTexture.SamplerHandle;
+			imgInfo.imageView = m_ObjTexture.ViewHandle;
+			imgInfo.sampler = m_ObjTexture.SamplerHandle;
 
 			std::vector<VkWriteDescriptorSet> writeInfos(2);
 
@@ -1370,22 +1369,12 @@ namespace VKP
 		return true;
 	}
 
-	bool Context::CreateVertexBuffer()
+	bool Context::CreateVertexBuffer(const std::vector<Vertex>& vertices)
 	{
-		const std::vector<float> vertices = {
-				-0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-				0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
-				0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
-				-0.5f, 0.5f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-				-0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-				0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
-				0.5f, 0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
-				-0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-		};
-
 		Buffer staging = {};
+		const VkDeviceSize size = vertices.size() * sizeof(Vertex);
 
-		if (!CreateBuffer(staging, vertices.size() * sizeof(float), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
+		if (!CreateBuffer(staging, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
 			return false;
 
 		void* data;
@@ -1396,32 +1385,28 @@ namespace VKP
 			return false;
 		}
 
-		memcpy(data, vertices.data(), vertices.size() * sizeof(float));
+		memcpy(data, vertices.data(), size);
 
 		vmaUnmapMemory(s_Allocator, staging.MemoryHandle);
 
-		if (!CreateBuffer(m_VertexBuffer, vertices.size() * sizeof(float), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT))
+		if (!CreateBuffer(m_ObjVBO, size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT))
 		{
 			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
 			return false;
 		}
 
-		bool success = CopyBuffer(staging, m_VertexBuffer, vertices.size() * sizeof(float));
+		bool success = CopyBuffer(staging, m_ObjVBO, size);
 		vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
 
 		return success;
 	}
 
-	bool Context::CreateIndexBuffer()
+	bool Context::CreateIndexBuffer(const std::vector<uint32_t>& indices)
 	{
-		std::vector<uint32_t> indices = {
-			0, 1, 2, 2, 3, 0,
-			4, 5, 6, 6, 7, 4,
-		};
-
 		Buffer staging = {};
+		const VkDeviceSize size = indices.size() * sizeof(uint32_t);
 
-		if (!CreateBuffer(staging, indices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
+		if (!CreateBuffer(staging, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
 			return false;
 
 		void* data;
@@ -1432,26 +1417,78 @@ namespace VKP
 			return false;
 		}
 
-		memcpy(data, indices.data(), indices.size() * sizeof(uint32_t));
+		memcpy(data, indices.data(), size);
 
 		vmaUnmapMemory(s_Allocator, staging.MemoryHandle);
 
-		if (!CreateBuffer(m_IndexBuffer, indices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT))
+		if (!CreateBuffer(m_ObjIBO, size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT))
 		{
 			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
 			return false;
 		}
 
-		bool success = CopyBuffer(staging, m_IndexBuffer, indices.size() * sizeof(uint32_t));
+		bool success = CopyBuffer(staging, m_ObjIBO, size);
 		vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
 
 		return success;
 	}
 
-	bool Context::CreateTestTexture()
+	bool Context::LoadObjModel()
+	{
+		tinyobj::attrib_t attrib;
+		std::vector<tinyobj::shape_t> shapes;
+		std::vector<tinyobj::material_t> materials;
+		std::string warnings, errors;
+
+		if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warnings, &errors, OBJ_MODEL_PATH))
+		{
+			VKP_ERROR("Unable to load OBJ model file {}", OBJ_MODEL_PATH);
+			return false;
+		}
+
+		std::vector<Vertex> vertices;
+		std::vector<uint32_t> indices;
+		std::unordered_map<Vertex, uint32_t> uniqueVertices;
+
+		for (const auto& s : shapes)
+		{
+			for (const auto& i : s.mesh.indices)
+			{
+				Vertex v{};
+
+				v.Position = {
+					attrib.vertices[3 * i.vertex_index + 0],
+					attrib.vertices[3 * i.vertex_index + 1],
+					attrib.vertices[3 * i.vertex_index + 2]
+				};
+
+				v.TexCoord = {
+					attrib.texcoords[2 * i.texcoord_index + 0],
+					1.0f - attrib.texcoords[2 * i.texcoord_index + 1]
+				};
+
+				v.Color = { 1.0f, 1.0f, 1.0f };
+
+				if (uniqueVertices.count(v) == 0) {
+					uniqueVertices[v] = static_cast<uint32_t>(vertices.size());
+					vertices.push_back(v);
+				}
+
+				indices.push_back(uniqueVertices[v]);
+			}
+		}
+
+		bool success = CreateVertexBuffer(vertices);
+		if (success) success = CreateIndexBuffer(indices);
+		if (success) m_NumIndices = indices.size();
+
+		return success;
+	}
+
+	bool Context::LoadObjTexture()
 	{
 		int w = 0, h = 0, nrChannels = 0;
-		uint8_t* data = stbi_load("assets/textures/texture.jpg", &w, &h, &nrChannels, STBI_rgb_alpha);
+		uint8_t* data = stbi_load(OBJ_TEXTURE_PATH, &w, &h, &nrChannels, STBI_rgb_alpha);
 
 		if (data == nullptr)
 		{
@@ -1475,30 +1512,30 @@ namespace VKP
 
 		stbi_image_free(data);
 
-		if (!CreateImage(m_TestTexture, w, h, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT))
+		if (!CreateImage(m_ObjTexture, w, h, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT))
 		{
 			VKP_ERROR("Unable to create image object");
 			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
 			return false;
 		}
 
-		bool success = PopulateImage(m_TestTexture, staging, w, h);
+		bool success = PopulateImage(m_ObjTexture, staging, w, h);
 
 		vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
+
+		if (success) success = CreateImageView(m_ObjTexture, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+		if (success) success = CreateImageSampler(m_ObjTexture);
 
 		return success;
 	}
 
-	bool Context::CreateTestTextureView()
-	{
-		return CreateImageView(m_TestTexture, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
-	}
-
 	bool Context::RecordCommandBuffer(VkCommandBuffer buffer, size_t imageId)
 	{
-		static auto startTime = std::chrono::high_resolution_clock::now();
-		auto currentTime = std::chrono::high_resolution_clock::now();
-		float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+		// static auto startTime = std::chrono::high_resolution_clock::now();
+		// auto currentTime = std::chrono::high_resolution_clock::now();
+		// float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+		float time = 0.0f;
 
 		glm::mat4 M = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)) *
 									glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
@@ -1540,16 +1577,16 @@ namespace VKP
 		vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DefaultPipeline);
 
 		VkDeviceSize offset = 0;
-		vkCmdBindVertexBuffers(buffer, 0, 1, &m_VertexBuffer.BufferHandle, &offset);
+		vkCmdBindVertexBuffers(buffer, 0, 1, &m_ObjVBO.BufferHandle, &offset);
 
-		vkCmdBindIndexBuffer(buffer, m_IndexBuffer.BufferHandle, offset, VK_INDEX_TYPE_UINT32);
+		vkCmdBindIndexBuffer(buffer, m_ObjIBO.BufferHandle, offset, VK_INDEX_TYPE_UINT32);
 
 		glm::mat4 vp = glm::perspective(glm::radians(45.0f), m_AspectRatio, 0.1f, 100.0f);
 
 		vkCmdPushConstants(buffer, m_DefaultPipeLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &vp[0][0]);
 		vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DefaultPipeLayout, 0, 1, &m_DescSets[m_CurrentFrame], 0, nullptr);
 
-		vkCmdDrawIndexed(buffer, 12, 1, 0, 0, 0);
+		vkCmdDrawIndexed(buffer, m_NumIndices, 1, 0, 0, 0);
 
 		vkCmdEndRenderPass(buffer);
 
@@ -1585,7 +1622,7 @@ namespace VKP
 				return f;
 		}
 
-		return m_SwapchainData.SurfaceFormats[0];
+		return m_SwapchainData.SurfaceFormats[1];
 	}
 
 	VkPresentModeKHR Context::ChoosePresentMode() const

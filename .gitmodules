@@ -7,3 +7,6 @@
 [submodule "Vulkan/vendor/glm"]
 	path = Vulkan/vendor/glm
 	url = https://github.com/SimoneBallesio/glm
+[submodule "Vulkan/vendor/tinyobjloader"]
+	path = Vulkan/vendor/tinyobjloader
+	url = https://github.com/SimoneBallesio/tinyobjloader

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Rendering/VertexData.hpp"
+
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 
@@ -111,10 +113,10 @@ namespace VKP
 		VkCommandPool m_TransferPool = VK_NULL_HANDLE;
 		std::vector<VkCommandBuffer> m_CmdBuffer;
 
-		Buffer m_VertexBuffer = {};
-		Buffer m_IndexBuffer = {};
-
-		Texture m_TestTexture = {};
+		Buffer m_ObjVBO = {};
+		Buffer m_ObjIBO = {};
+		Texture m_ObjTexture = {};
+		uint32_t m_NumIndices = 0;
 
 		std::vector<Buffer> m_UniformBuffers;
 
@@ -169,10 +171,11 @@ namespace VKP
 
 		bool CreateSyncObjects();
 
-		bool CreateVertexBuffer();
-		bool CreateIndexBuffer();
-		bool CreateTestTexture();
-		bool CreateTestTextureView();
+		bool LoadObjModel();
+		bool LoadObjTexture();
+
+		bool CreateVertexBuffer(const std::vector<Vertex>& vertices);
+		bool CreateIndexBuffer(const std::vector<uint32_t>& indices);
 
 		bool RecordCommandBuffer(VkCommandBuffer buffer, size_t imageId);
 
