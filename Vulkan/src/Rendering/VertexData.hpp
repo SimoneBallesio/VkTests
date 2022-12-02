@@ -3,6 +3,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/hash.hpp>
 
+#include <vulkan/vulkan.h>
+
 namespace VKP
 {
 
@@ -15,10 +17,9 @@ namespace VKP
 		Vertex() = default;
 		~Vertex() = default;
 
-		bool operator==(const Vertex& v) const
-		{
-			return Position == v.Position && Color == v.Color && TexCoord == v.TexCoord;
-		}
+		bool operator==(const Vertex& v) const;
+
+		static void PopulateBindingDescription(std::vector<VkVertexInputBindingDescription>& bindings, std::vector<VkVertexInputAttributeDescription>& attributes);
 	};
 
 }
