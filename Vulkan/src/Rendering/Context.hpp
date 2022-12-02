@@ -43,6 +43,7 @@ namespace VKP
 		VkExtent2D CurrentExtent;
 		VkSurfaceFormatKHR Format;
 		VkSurfaceFormatKHR PrevFormat;
+		VkSampleCountFlagBits NumSamples = VK_SAMPLE_COUNT_1_BIT;
 
 		bool IsValid() const;
 	};
@@ -60,7 +61,7 @@ namespace VKP
 		bool CreateBuffer(Buffer &buffer, VkDeviceSize size, VkBufferUsageFlags bufferUsage, VmaAllocationCreateFlags memoryFlags);
 		bool CopyBuffer(const Buffer &src, const Buffer &dst, VkDeviceSize size);
 
-		bool CreateImage(Texture& texture, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage);
+		bool CreateImage(Texture& texture, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT);
 		bool PopulateImage(Texture& texture, Buffer &staging, uint32_t width, uint32_t height);
 		bool CreateImageView(Texture& texture, VkFormat format, VkImageAspectFlags aspectFlags);
 		bool CreateImageSampler(Texture& texture);
@@ -91,6 +92,7 @@ namespace VKP
 		VkSwapchainKHR m_Swapchain = VK_NULL_HANDLE;
 		std::vector<Texture> m_SwapImages;
 		Texture m_SwapDepth = {};
+		Texture m_SwapSample = {};
 
 		VkViewport m_Viewport = {};
 		VkRect2D m_Scissor = {};
@@ -148,6 +150,7 @@ namespace VKP
 
 		bool CreateMemoryAllocator();
 
+		bool CreateMsaaResources();
 		bool CreateDepthResources();
 
 		bool CreateSwapchain();
@@ -179,6 +182,8 @@ namespace VKP
 		bool CreateIndexBuffer(const std::vector<uint32_t>& indices);
 
 		bool RecordCommandBuffer(VkCommandBuffer buffer, size_t imageId);
+
+		VkSampleCountFlagBits GetMsaaMaxSamples() const;
 
 		VkExtent2D ChooseExtents() const;
 		VkSurfaceFormatKHR ChooseSurfaceFormat() const;
