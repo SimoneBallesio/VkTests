@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Rendering/Buffer.hpp"
+#include "Rendering/Texture.hpp"
 #include "Rendering/VertexData.hpp"
 
 #include <vk_mem_alloc.h>
@@ -7,21 +9,6 @@
 
 namespace VKP
 {
-
-	struct Buffer
-	{
-		VkBuffer BufferHandle = VK_NULL_HANDLE;
-		VmaAllocation MemoryHandle = VK_NULL_HANDLE;
-	};
-
-	struct Texture
-	{
-		VkImage ImageHandle = VK_NULL_HANDLE;
-		VkImageView ViewHandle = VK_NULL_HANDLE;
-		VkSampler SamplerHandle = VK_NULL_HANDLE;
-		VmaAllocation MemoryHandle = VK_NULL_HANDLE;
-		uint32_t MipLevels = 1;
-	};
 
 	struct QueueIndices
 	{

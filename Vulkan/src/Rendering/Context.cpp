@@ -1241,38 +1241,17 @@ namespace VKP
 		dynInfo.pDynamicStates = dynamicStates.data();
 		dynInfo.dynamicStateCount = dynamicStates.size();
 
-		VkVertexInputBindingDescription vertBind = {};
-		vertBind.binding = 0;
-		vertBind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-		vertBind.stride = sizeof(Vertex);
+		std::vector<VkVertexInputBindingDescription> vertBind = {};
+		std::vector<VkVertexInputAttributeDescription> descriptions = {};
 
-		std::vector<VkVertexInputAttributeDescription> descriptions;
-		descriptions.reserve(3);
-
-		auto& posDesc = descriptions.emplace_back();
-		posDesc.format = VK_FORMAT_R32G32B32_SFLOAT;
-		posDesc.location = 0;
-		posDesc.binding = 0;
-		posDesc.offset = offsetof(Vertex, Position);
-
-		auto& colDesc = descriptions.emplace_back();
-		colDesc.format = VK_FORMAT_R32G32B32_SFLOAT;
-		colDesc.location = 1;
-		colDesc.binding = 0;
-		colDesc.offset = offsetof(Vertex, Color);
-
-		auto& texDesc = descriptions.emplace_back();
-		texDesc.format = VK_FORMAT_R32G32_SFLOAT;
-		texDesc.location = 2;
-		texDesc.binding = 0;
-		texDesc.offset = offsetof(Vertex, TexCoord);
+		Vertex::PopulateBindingDescription(vertBind, descriptions);
 
 		VkPipelineVertexInputStateCreateInfo vertInfo = {};
 		vertInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-		vertInfo.pVertexBindingDescriptions = &vertBind;
+		vertInfo.pVertexBindingDescriptions = vertBind.data();
+		vertInfo.vertexBindingDescriptionCount = vertBind.size();
 		vertInfo.vertexAttributeDescriptionCount = descriptions.size();
 		vertInfo.pVertexAttributeDescriptions = descriptions.data();
-		vertInfo.vertexBindingDescriptionCount = 1;
 
 		VkPipelineInputAssemblyStateCreateInfo inputInfo = {};
 		inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
