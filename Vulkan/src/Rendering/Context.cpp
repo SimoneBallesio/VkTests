@@ -850,6 +850,16 @@ namespace VKP
 		m_SwapchainData.CurrentExtent = extents;
 		m_SwapchainData.Format = format;
 
+		m_Viewport.x = 0.0f;
+		m_Viewport.y = static_cast<float>(m_SwapchainData.CurrentExtent.height);
+		m_Viewport.width = static_cast<float>(m_SwapchainData.CurrentExtent.width);
+		m_Viewport.height = static_cast<float>(m_SwapchainData.CurrentExtent.height) * -1.0f;
+		m_Viewport.minDepth = 0.0f;
+		m_Viewport.maxDepth = 1.0f;
+
+		m_Scissor.extent = m_SwapchainData.CurrentExtent;
+		m_Scissor.offset = {0, 0};
+
 		return true;
 	}
 
@@ -863,13 +873,6 @@ namespace VKP
 
 		bool valid = CreateSwapchain();
 		if (valid) valid = CreateImageViews();
-
-		m_Viewport.y = static_cast<float>(m_SwapchainData.CurrentExtent.height);
-		m_Viewport.width = static_cast<float>(m_SwapchainData.CurrentExtent.width);
-		m_Viewport.height = static_cast<float>(m_SwapchainData.CurrentExtent.height) * -1.0f;
-		m_Scissor.extent = m_SwapchainData.CurrentExtent;
-		m_Scissor.offset = { 0, 0 };
-
 		if (valid) valid = CreateMsaaResources();
 		if (valid) valid = CreateDepthResources();
 		if (valid) valid = CreateFramebuffers();
@@ -1275,16 +1278,6 @@ namespace VKP
 		inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
 		inputInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 		inputInfo.primitiveRestartEnable = VK_FALSE;
-
-		m_Viewport.x = 0.0f;
-		m_Viewport.y = static_cast<float>(m_SwapchainData.CurrentExtent.height);
-		m_Viewport.width = static_cast<float>(m_SwapchainData.CurrentExtent.width);
-		m_Viewport.height = static_cast<float>(m_SwapchainData.CurrentExtent.height) * -1.0f;
-		m_Viewport.minDepth = 0.0f;
-		m_Viewport.maxDepth = 1.0f;
-
-		m_Scissor.extent = m_SwapchainData.CurrentExtent;
-		m_Scissor.offset = { 0, 0 };
 
 		VkPipelineViewportStateCreateInfo viewportInfo = {};
 		viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
