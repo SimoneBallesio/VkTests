@@ -25,6 +25,17 @@
 namespace VKP
 {
 
+	void DeletionQueue::Push(std::function<void()>&& fn)
+	{
+		Queue.push_back(fn);
+	}
+
+	void DeletionQueue::Flush()
+	{
+		for (auto it = Queue.rbegin(); it != Queue.rend(); it++) (*it)();
+		Queue.clear();
+	}
+
 	bool QueueIndices::AreValid() const
 	{
 		return Graphics != UINT32_MAX && Presentation != UINT32_MAX && Transfer != UINT32_MAX;
@@ -39,54 +50,7 @@ namespace VKP
 	{
 		vkDeviceWaitIdle(s_Device);
 
-		if (m_ObjTexture.ImageHandle != VK_NULL_HANDLE)
-		{
-			vkDestroySampler(s_Device, m_ObjTexture.SamplerHandle, nullptr);
-			vkDestroyImageView(s_Device, m_ObjTexture.ViewHandle, nullptr);
-			vmaDestroyImage(s_Allocator, m_ObjTexture.ImageHandle, m_ObjTexture.MemoryHandle);
-		}
-
-		if (m_DescPool != VK_NULL_HANDLE)
-			vkDestroyDescriptorPool(s_Device, m_DescPool, nullptr);
-
-		if (m_DescSetLayout != VK_NULL_HANDLE)
-			vkDestroyDescriptorSetLayout(s_Device, m_DescSetLayout, nullptr);
-
-		for (auto& b : m_UniformBuffers)
-		{
-			if (b.BufferHandle != VK_NULL_HANDLE)
-				vmaDestroyBuffer(s_Allocator, b.BufferHandle, b.MemoryHandle);
-		}
-
-		if (m_ObjVBO.BufferHandle != VK_NULL_HANDLE)
-			vmaDestroyBuffer(s_Allocator, m_ObjVBO.BufferHandle, m_ObjVBO.MemoryHandle);
-
-		if (m_ObjIBO.BufferHandle != VK_NULL_HANDLE)
-			vmaDestroyBuffer(s_Allocator, m_ObjIBO.BufferHandle, m_ObjIBO.MemoryHandle);
-
-		for (size_t i = 0; i < MAX_CONCURRENT_FRAMES; i++)
-		{
-			vkDestroySemaphore(s_Device, m_CanAcquireImage[i], nullptr);
-			vkDestroySemaphore(s_Device, m_CanPresentImage[i], nullptr);
-			vkDestroyFence(s_Device, m_PrevFrameRenderEnded[i], nullptr);
-		}
-
-		if (m_TransferPool != m_CmdPool)
-			vkDestroyCommandPool(s_Device, m_TransferPool, nullptr);
-
-		if (m_CmdPool != VK_NULL_HANDLE)
-			vkDestroyCommandPool(s_Device, m_CmdPool, nullptr);
-
-		DestroySwapchain();
-
-		if (m_DefaultPipeline != VK_NULL_HANDLE)
-			vkDestroyPipeline(s_Device, m_DefaultPipeline, nullptr);
-
-		if (m_DefaultPipeLayout != VK_NULL_HANDLE)
-			vkDestroyPipelineLayout(s_Device, m_DefaultPipeLayout, nullptr);
-
-		if (m_DefaultRenderPass != VK_NULL_HANDLE)
-			vkDestroyRenderPass(s_Device, m_DefaultRenderPass, nullptr);
+		m_DeletionQueue.Flush();
 
 		if (s_Allocator != VK_NULL_HANDLE)
 			vmaDestroyAllocator(s_Allocator);
@@ -126,16 +90,6 @@ namespace VKP
 		if (success) success = AllocateCommandBuffer();
 		if (success) success = CreateSyncObjects();
 
-		if (success) success = LoadObjModel();
-		if (success) success = LoadObjTexture();
-
-		if (success) success = CreateUniformBuffers();
-
-		if (success) success = CreateDescriptorSetLayout();
-		if (success) success = CreateDescriptorPool();
-		if (success) success = AllocateDescriptorSets();
-		if (success) success = CreatePipeline();
-
 		return success;
 	}
 
@@ -174,6 +128,241 @@ namespace VKP
 		};
 
 		return SubmitTransfer(fn);
+	}
+
+	bool Context::CreateVertexBuffer(Buffer& vbo, const std::vector<Vertex>& vertices)
+	{
+		Buffer staging = {};
+		const VkDeviceSize size = vertices.size() * sizeof(Vertex);
+
+		if (!CreateBuffer(staging, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
+			return false;
+
+		void* data;
+		if (vmaMapMemory(s_Allocator, staging.MemoryHandle, &data) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to map staging buffer for initial copy");
+			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		memcpy(data, vertices.data(), size);
+
+		vmaUnmapMemory(s_Allocator, staging.MemoryHandle);
+
+		if (!CreateBuffer(vbo, size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT))
+		{
+			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		bool success = CopyBuffer(staging, vbo, size);
+		vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
+
+		return success;
+	}
+
+	bool Context::CreateIndexBuffer(Buffer& ibo, const std::vector<uint32_t>& indices)
+	{
+		Buffer staging = {};
+		const VkDeviceSize size = indices.size() * sizeof(uint32_t);
+
+		if (!CreateBuffer(staging, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
+			return false;
+
+		void* data;
+		if (vmaMapMemory(s_Allocator, staging.MemoryHandle, &data) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to map staging buffer for initial copy");
+			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		memcpy(data, indices.data(), size);
+
+		vmaUnmapMemory(s_Allocator, staging.MemoryHandle);
+
+		if (!CreateBuffer(ibo, size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT))
+		{
+			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
+			return false;
+		}
+
+		bool success = CopyBuffer(staging, ibo, size);
+		vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
+
+		return success;
+	}
+
+	bool Context::CreatePipelineLayout(VkPipelineLayout* layout)
+	{
+		VkPushConstantRange vpRange = {};
+		vpRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		vpRange.size = sizeof(PushConstantData);
+		vpRange.offset = 0;
+
+		VkPipelineLayoutCreateInfo pipeLayoutInfo = {};
+		pipeLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		pipeLayoutInfo.pPushConstantRanges = &vpRange;
+		pipeLayoutInfo.pushConstantRangeCount = 1;
+		pipeLayoutInfo.pSetLayouts = &m_DescSetLayout;
+		pipeLayoutInfo.setLayoutCount = 1;
+
+		if (vkCreatePipelineLayout(s_Device, &pipeLayoutInfo, nullptr, layout) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to create default pipeline layout");
+			return false;
+		}
+
+		return true;
+	}
+
+	bool Context::CreatePipeline(Material& material)
+	{
+		std::string moduleNames[] = {
+			material.Path + ".vert.spv",
+			material.Path + ".frag.spv",
+		};
+
+		const VkShaderStageFlagBits moduleStages[] = {
+			VK_SHADER_STAGE_VERTEX_BIT,
+			VK_SHADER_STAGE_FRAGMENT_BIT,
+		};
+
+		std::vector<VkShaderModuleCreateInfo> moduleInfos(2);
+		std::vector<VkShaderModule> modules(2);
+
+		std::vector<VkPipelineShaderStageCreateInfo> stageInfos(2);
+
+		for (size_t i = 0; i < 2; i++)
+		{
+			std::ifstream file(moduleNames[i], std::ios::ate | std::ios::binary);
+
+			if (!file.is_open())
+			{
+				VKP_ERROR("Unable to locate shader module file: {}", moduleNames[i]);
+				return false;
+			}
+
+			const size_t size = file.tellg();
+			std::vector<char> fileBuffer(size);
+
+			file.seekg(0);
+			file.read(fileBuffer.data(), size);
+
+			file.close();
+
+			auto& moduleInfo = moduleInfos[i];
+			moduleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+			moduleInfo.pCode = reinterpret_cast<uint32_t*>(fileBuffer.data());
+			moduleInfo.codeSize = size;
+
+			if (vkCreateShaderModule(s_Device, &moduleInfo, nullptr, &modules[i]) != VK_SUCCESS)
+			{
+				VKP_ERROR("Unable to create shader module: {}", moduleNames[i]);
+				return false;
+			}
+
+			auto& stageInfo = stageInfos[i];
+			stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+			stageInfo.module = modules[i];
+			stageInfo.pName = "main";
+			stageInfo.stage = moduleStages[i];
+		}
+
+		std::vector<VkDynamicState> dynamicStates = {
+			VK_DYNAMIC_STATE_VIEWPORT,
+			VK_DYNAMIC_STATE_SCISSOR,
+		};
+
+		VkPipelineDynamicStateCreateInfo dynInfo = {};
+		dynInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+		dynInfo.pDynamicStates = dynamicStates.data();
+		dynInfo.dynamicStateCount = dynamicStates.size();
+
+		std::vector<VkVertexInputBindingDescription> vertBind = {};
+		std::vector<VkVertexInputAttributeDescription> descriptions = {};
+
+		Vertex::PopulateBindingDescription(vertBind, descriptions);
+
+		VkPipelineVertexInputStateCreateInfo vertInfo = {};
+		vertInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+		vertInfo.pVertexBindingDescriptions = vertBind.data();
+		vertInfo.vertexBindingDescriptionCount = vertBind.size();
+		vertInfo.vertexAttributeDescriptionCount = descriptions.size();
+		vertInfo.pVertexAttributeDescriptions = descriptions.data();
+
+		VkPipelineInputAssemblyStateCreateInfo inputInfo = {};
+		inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+		inputInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+		inputInfo.primitiveRestartEnable = VK_FALSE;
+
+		VkPipelineViewportStateCreateInfo viewportInfo = {};
+		viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+		viewportInfo.viewportCount = 1;
+		viewportInfo.scissorCount = 1;
+
+		VkPipelineRasterizationStateCreateInfo rasterInfo = {};
+		rasterInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+		rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
+		rasterInfo.cullMode = VK_CULL_MODE_BACK_BIT;
+		rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+		rasterInfo.rasterizerDiscardEnable = VK_FALSE;
+		rasterInfo.depthBiasEnable = VK_FALSE;
+		rasterInfo.lineWidth = 1.0f;
+
+		VkPipelineMultisampleStateCreateInfo sampleInfo = {};
+		sampleInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+		sampleInfo.rasterizationSamples = m_SwapchainData.NumSamples;
+
+		VkPipelineColorBlendAttachmentState blendState = {};
+		blendState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+		blendState.blendEnable = VK_FALSE;
+
+		VkPipelineColorBlendStateCreateInfo blendInfo = {};
+		blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+		blendInfo.logicOpEnable = VK_FALSE;
+		blendInfo.pAttachments = &blendState;
+		blendInfo.attachmentCount = 1;
+
+		VkPipelineDepthStencilStateCreateInfo depthInfo = {};
+		depthInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+		depthInfo.depthTestEnable = VK_TRUE;
+		depthInfo.depthWriteEnable = VK_TRUE;
+		depthInfo.depthCompareOp = VK_COMPARE_OP_LESS;
+		depthInfo.depthBoundsTestEnable = VK_FALSE;
+		depthInfo.stencilTestEnable = VK_FALSE;
+
+		VkGraphicsPipelineCreateInfo pipeInfo = {};
+		pipeInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+		pipeInfo.pStages = stageInfos.data();
+		pipeInfo.stageCount = stageInfos.size();
+		pipeInfo.renderPass = m_DefaultRenderPass;
+		pipeInfo.subpass = 0;
+		pipeInfo.layout = material.PipeLayout;
+		pipeInfo.pDynamicState = &dynInfo;
+		pipeInfo.pVertexInputState = &vertInfo;
+		pipeInfo.pInputAssemblyState = &inputInfo;
+		pipeInfo.pViewportState = &viewportInfo;
+		pipeInfo.pRasterizationState = &rasterInfo;
+		pipeInfo.pMultisampleState = &sampleInfo;
+		pipeInfo.pColorBlendState = &blendInfo;
+		pipeInfo.pDepthStencilState = &depthInfo;
+
+		if (vkCreateGraphicsPipelines(s_Device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &material.Pipe) != VK_SUCCESS)
+		{
+			VKP_ERROR("Unable to create default pipeline");
+
+			for (auto& m : modules)
+				vkDestroyShaderModule(s_Device, m, nullptr);
+
+			return false;
+		}
+
+		for (auto& m : modules)
+			vkDestroyShaderModule(s_Device, m, nullptr);
+
+		return true;
 	}
 
 	bool Context::CreateImage(Texture& texture, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkSampleCountFlagBits samples)
@@ -796,6 +985,11 @@ namespace VKP
 		bool success = CreateImage(m_SwapSample, m_SwapchainData.CurrentExtent.width, m_SwapchainData.CurrentExtent.height, m_SwapchainData.Format.format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, m_SwapchainData.NumSamples);
 		if (success) success = CreateImageView(m_SwapSample, m_SwapchainData.Format.format, VK_IMAGE_ASPECT_COLOR_BIT);
 
+		m_DeletionQueue.Push([=]() {
+			vkDestroyImageView(s_Device, m_SwapSample.ViewHandle, nullptr);
+			vmaDestroyImage(s_Allocator, m_SwapSample.ImageHandle, m_SwapSample.MemoryHandle);
+		});
+
 		return success;
 	}
 
@@ -803,6 +997,11 @@ namespace VKP
 	{
 		bool success = CreateImage(m_SwapDepth, m_SwapchainData.CurrentExtent.width, m_SwapchainData.CurrentExtent.height, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, m_SwapchainData.NumSamples);
 		if (success) success = CreateImageView(m_SwapDepth, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+		m_DeletionQueue.Push([=]() {
+			vkDestroyImageView(s_Device, m_SwapDepth.ViewHandle, nullptr);
+			vmaDestroyImage(s_Allocator, m_SwapDepth.ImageHandle, m_SwapDepth.MemoryHandle);
+		});
 
 		return success;
 	}
@@ -859,6 +1058,8 @@ namespace VKP
 
 		m_Scissor.extent = m_SwapchainData.CurrentExtent;
 		m_Scissor.offset = {0, 0};
+
+		m_DeletionQueue.Push([=]() { vkDestroySwapchainKHR(s_Device, m_Swapchain, nullptr); });
 
 		return true;
 	}
@@ -934,6 +1135,8 @@ namespace VKP
 				VKP_ERROR("Unable to create Vulkan swapchain image view #{}", i);
 				return false;
 			}
+
+			m_DeletionQueue.Push([=]() { vkDestroyImageView(s_Device, t.ViewHandle, nullptr); });
 		}
 
 		return true;
@@ -1016,6 +1219,8 @@ namespace VKP
 			return false;
 		}
 
+		m_DeletionQueue.Push([=]() { vkDestroyRenderPass(s_Device, m_DefaultRenderPass, nullptr); });
+
 		return true;
 	}
 
@@ -1040,6 +1245,8 @@ namespace VKP
 				VKP_ERROR("Unable to create framebuffer for Vulkan swapchain image view #{}", i);
 				return false;
 			}
+
+			m_DeletionQueue.Push([=]() { vkDestroyFramebuffer(s_Device, m_DefaultFramebuffers[i], nullptr); });
 		}
 
 		return true;
@@ -1294,23 +1501,9 @@ namespace VKP
 		depthInfo.depthBoundsTestEnable = VK_FALSE;
 		depthInfo.stencilTestEnable = VK_FALSE;
 
-		VkPushConstantRange vpRange = {};
-		vpRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-		vpRange.size = sizeof(glm::mat4);
-		vpRange.offset = 0;
-
-		VkPipelineLayoutCreateInfo pipeLayoutInfo = {};
-		pipeLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		pipeLayoutInfo.pPushConstantRanges = &vpRange;
-		pipeLayoutInfo.pushConstantRangeCount = 1;
-		pipeLayoutInfo.pSetLayouts = &m_DescSetLayout;
-		pipeLayoutInfo.setLayoutCount = 1;
-
-		if (vkCreatePipelineLayout(s_Device, &pipeLayoutInfo, nullptr, &m_DefaultPipeLayout) != VK_SUCCESS)
+		if (!CreatePipelineLayout(&m_DefaultPipeLayout))
 		{
-			VKP_ERROR("Unable to create default pipeline layout");
-
-			for (auto &m : modules)
+			for (auto& m : modules)
 				vkDestroyShaderModule(s_Device, m, nullptr);
 
 			return false;
@@ -1336,7 +1529,7 @@ namespace VKP
 		{
 			VKP_ERROR("Unable to create default pipeline");
 
-			for (auto &m : modules)
+			for (auto& m : modules)
 				vkDestroyShaderModule(s_Device, m, nullptr);
 
 			return false;
@@ -1361,6 +1554,8 @@ namespace VKP
 			return false;
 		}
 
+		m_DeletionQueue.Push([=]() { vkDestroyCommandPool(s_Device, m_CmdPool, nullptr ); });
+
 		if (m_QueueIndices.Presentation == m_QueueIndices.Graphics)
 		{
 			m_TransferPool = m_CmdPool;
@@ -1374,6 +1569,8 @@ namespace VKP
 			VKP_ERROR("Unable to create presentation command pool");
 			return false;
 		}
+
+		m_DeletionQueue.Push([=]() { vkDestroyCommandPool(s_Device, m_TransferPool, nullptr ); });
 
 		return true;
 	}
@@ -1418,84 +1615,26 @@ namespace VKP
 				return false;
 			}
 
+			m_DeletionQueue.Push([=]() { vkDestroySemaphore(s_Device, m_CanAcquireImage[i], nullptr); });
+
 			if (vkCreateSemaphore(s_Device, &semInfo, nullptr, &m_CanPresentImage[i]) != VK_SUCCESS)
 			{
 				VKP_ERROR("Unable to create semaphore");
 				return false;
 			}
 
+			m_DeletionQueue.Push([=]() { vkDestroySemaphore(s_Device, m_CanPresentImage[i], nullptr); });
+
 			if (vkCreateFence(s_Device, &fenceInfo, nullptr, &m_PrevFrameRenderEnded[i]) != VK_SUCCESS)
 			{
 				VKP_ERROR("Unable to create fence");
 				return false;
 			}
+
+			m_DeletionQueue.Push([=]() { vkDestroyFence(s_Device, m_PrevFrameRenderEnded[i], nullptr); });
 		}
 
 		return true;
-	}
-
-	bool Context::CreateVertexBuffer(const std::vector<Vertex>& vertices)
-	{
-		Buffer staging = {};
-		const VkDeviceSize size = vertices.size() * sizeof(Vertex);
-
-		if (!CreateBuffer(staging, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
-			return false;
-
-		void* data;
-		if (vmaMapMemory(s_Allocator, staging.MemoryHandle, &data) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to map staging buffer for initial copy");
-			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
-			return false;
-		}
-
-		memcpy(data, vertices.data(), size);
-
-		vmaUnmapMemory(s_Allocator, staging.MemoryHandle);
-
-		if (!CreateBuffer(m_ObjVBO, size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT))
-		{
-			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
-			return false;
-		}
-
-		bool success = CopyBuffer(staging, m_ObjVBO, size);
-		vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
-
-		return success;
-	}
-
-	bool Context::CreateIndexBuffer(const std::vector<uint32_t>& indices)
-	{
-		Buffer staging = {};
-		const VkDeviceSize size = indices.size() * sizeof(uint32_t);
-
-		if (!CreateBuffer(staging, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
-			return false;
-
-		void* data;
-		if (vmaMapMemory(s_Allocator, staging.MemoryHandle, &data) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to map staging buffer for initial copy");
-			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
-			return false;
-		}
-
-		memcpy(data, indices.data(), size);
-
-		vmaUnmapMemory(s_Allocator, staging.MemoryHandle);
-
-		if (!CreateBuffer(m_ObjIBO, size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT))
-		{
-			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
-			return false;
-		}
-
-		bool success = CopyBuffer(staging, m_ObjIBO, size);
-		vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
-
-		return success;
 	}
 
 	bool Context::LoadObjModel()
@@ -1543,8 +1682,8 @@ namespace VKP
 			}
 		}
 
-		bool success = CreateVertexBuffer(vertices);
-		if (success) success = CreateIndexBuffer(indices);
+		bool success = CreateVertexBuffer(m_ObjVBO, vertices);
+		if (success) success = CreateIndexBuffer(m_ObjIBO, indices);
 		if (success) m_NumIndices = indices.size();
 
 		return success;
@@ -1596,20 +1735,6 @@ namespace VKP
 
 	bool Context::RecordCommandBuffer(VkCommandBuffer buffer, size_t imageId)
 	{
-		// static auto startTime = std::chrono::high_resolution_clock::now();
-		// auto currentTime = std::chrono::high_resolution_clock::now();
-		// float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-		float time = 0.0f;
-
-		glm::mat4 M = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)) *
-									glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-
-		void *data = nullptr;
-		vmaMapMemory(s_Allocator, m_UniformBuffers[m_CurrentFrame].MemoryHandle, &data);
-		memcpy(data, &M[0][0], sizeof(glm::mat4));
-		vmaUnmapMemory(s_Allocator, m_UniformBuffers[m_CurrentFrame].MemoryHandle);
-
 		VkCommandBufferBeginInfo cmdInfo = {};
 		cmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 		cmdInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -1638,20 +1763,6 @@ namespace VKP
 
 		vkCmdSetViewport(buffer, 0, 1, &m_Viewport);
 		vkCmdSetScissor(buffer, 0, 1, &m_Scissor);
-
-		vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DefaultPipeline);
-
-		VkDeviceSize offset = 0;
-		vkCmdBindVertexBuffers(buffer, 0, 1, &m_ObjVBO.BufferHandle, &offset);
-
-		vkCmdBindIndexBuffer(buffer, m_ObjIBO.BufferHandle, offset, VK_INDEX_TYPE_UINT32);
-
-		glm::mat4 vp = glm::perspective(glm::radians(45.0f), m_AspectRatio, 0.1f, 100.0f);
-
-		vkCmdPushConstants(buffer, m_DefaultPipeLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &vp[0][0]);
-		vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_DefaultPipeLayout, 0, 1, &m_DescSets[m_CurrentFrame], 0, nullptr);
-
-		vkCmdDrawIndexed(buffer, m_NumIndices, 1, 0, 0, 0);
 
 		vkCmdEndRenderPass(buffer);
 

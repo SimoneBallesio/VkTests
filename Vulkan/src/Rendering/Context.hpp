@@ -2,13 +2,24 @@
 
 #include "Rendering/Buffer.hpp"
 #include "Rendering/Texture.hpp"
+#include "Rendering/Material.hpp"
 #include "Rendering/VertexData.hpp"
 
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 
+#include <deque>
+
 namespace VKP
 {
+
+	struct DeletionQueue
+	{
+		std::deque<std::function<void()>> Queue;
+
+		void Push(std::function<void()>&& fn);
+		void Flush();
+	};
 
 	struct QueueIndices
 	{
@@ -35,6 +46,13 @@ namespace VKP
 		bool IsValid() const;
 	};
 
+	struct PushConstantData
+	{
+		glm::mat4 Projection;
+		glm::mat4 View;
+		glm::mat4 VP;
+	};
+
 	class Context final
 	{
 	public:
@@ -45,11 +63,16 @@ namespace VKP
 		bool BeforeWindowCreation();
 		bool AfterWindowCreation();
 
-		bool CreateBuffer(Buffer &buffer, VkDeviceSize size, VkBufferUsageFlags bufferUsage, VmaAllocationCreateFlags memoryFlags);
-		bool CopyBuffer(const Buffer &src, const Buffer &dst, VkDeviceSize size);
+		bool CreateBuffer(Buffer& buffer, VkDeviceSize size, VkBufferUsageFlags bufferUsage, VmaAllocationCreateFlags memoryFlags);
+		bool CopyBuffer(const Buffer& src, const Buffer& dst, VkDeviceSize size);
+		bool CreateVertexBuffer(Buffer& vbo, const std::vector<Vertex>& vertices);
+		bool CreateIndexBuffer(Buffer& ibo, const std::vector<uint32_t>& indices);
+
+		bool CreatePipelineLayout(VkPipelineLayout* layout);
+		bool CreatePipeline(Material& material);
 
 		bool CreateImage(Texture& texture, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT);
-		bool PopulateImage(Texture& texture, Buffer &staging, uint32_t width, uint32_t height);
+		bool PopulateImage(Texture& texture, Buffer& staging, uint32_t width, uint32_t height);
 		bool CreateImageView(Texture& texture, VkFormat format, VkImageAspectFlags aspectFlags);
 		bool CreateImageSampler(Texture& texture);
 
@@ -71,6 +94,8 @@ namespace VKP
 		static inline VmaAllocator GetMemoryAllocator() { return s_Allocator; }
 
 	private:
+		DeletionQueue m_DeletionQueue = {};
+
 		VkInstance m_Instance = VK_NULL_HANDLE;
 		VkPhysicalDevice m_PhysDevice = VK_NULL_HANDLE;
 		VkSurfaceKHR m_Surface = VK_NULL_HANDLE;
@@ -102,6 +127,8 @@ namespace VKP
 		VkCommandPool m_CmdPool = VK_NULL_HANDLE;
 		VkCommandPool m_TransferPool = VK_NULL_HANDLE;
 		std::vector<VkCommandBuffer> m_CmdBuffer;
+
+		PushConstantData m_PushData = {};
 
 		Buffer m_ObjVBO = {};
 		Buffer m_ObjIBO = {};
@@ -164,9 +191,6 @@ namespace VKP
 
 		bool LoadObjModel();
 		bool LoadObjTexture();
-
-		bool CreateVertexBuffer(const std::vector<Vertex>& vertices);
-		bool CreateIndexBuffer(const std::vector<uint32_t>& indices);
 
 		bool RecordCommandBuffer(VkCommandBuffer buffer, size_t imageId);
 
