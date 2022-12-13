@@ -28,7 +28,7 @@
 #define VKP_INFO(...)		{ VKP::Log::GetLogger()->info(__VA_ARGS__); }
 #define VKP_WARN(...)		{ VKP::Log::GetLogger()->warn(__VA_ARGS__); }
 #define VKP_ERROR(...)		{ VKP::Log::GetLogger()->error(__VA_ARGS__); }
-#define VKP_ASSERT(x, ...)	{ if (!x) { VKP_ERROR(__VA_ARGS__); DEBUGBREAK(); } }
+#define VKP_ASSERT(x, ...)	{ if (!(x)) { VKP_ERROR(__VA_ARGS__); DEBUGBREAK(); } }
 
 #define VK_CHECK_RESULT(f) \
 { \

@@ -8,12 +8,13 @@ namespace VKP
 	class Mesh
 	{
 	public:
+		std::string Path = "";
 		Buffer VBO = {};
 		Buffer IBO = {};
 		uint32_t NumIndices = 0;
 
 		Mesh() = default;
-		~Mesh() = default;
+		~Mesh();
 
 		static Mesh* Create(const std::string& path);
 

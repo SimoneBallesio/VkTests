@@ -48,10 +48,17 @@ namespace VKP
 
 	struct PushConstantData
 	{
+		glm::mat4 Model = glm::mat4(1.0f);
+	};
+
+	struct CameraData
+	{
 		glm::mat4 Projection;
 		glm::mat4 View;
 		glm::mat4 VP;
 	};
+
+	struct Renderable;
 
 	class Context final
 	{
@@ -67,17 +74,20 @@ namespace VKP
 		bool CopyBuffer(const Buffer& src, const Buffer& dst, VkDeviceSize size);
 		bool CreateVertexBuffer(Buffer& vbo, const std::vector<Vertex>& vertices);
 		bool CreateIndexBuffer(Buffer& ibo, const std::vector<uint32_t>& indices);
+		void DestroyBuffer(Buffer& buffer);
 
 		bool CreatePipelineLayout(VkPipelineLayout* layout);
 		bool CreatePipeline(Material& material);
+		void DestroyMaterial(Material& material);
 
 		bool CreateImage(Texture& texture, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT);
 		bool PopulateImage(Texture& texture, Buffer& staging, uint32_t width, uint32_t height);
 		bool CreateImageView(Texture& texture, VkFormat format, VkImageAspectFlags aspectFlags);
 		bool CreateImageSampler(Texture& texture);
+		void DestroyTexture(Texture& texture);
 
 		bool SubmitTransfer(const std::function<void(VkCommandBuffer)>& fn);
-		bool SubmitRender(const std::function<void(VkCommandBuffer)>& fn);
+		void SubmitRenderable(Renderable* renderable);
 
 		void SwapBuffers();
 
@@ -112,9 +122,6 @@ namespace VKP
 		VkRenderPass m_DefaultRenderPass = VK_NULL_HANDLE;
 		std::vector<VkFramebuffer> m_DefaultFramebuffers;
 
-		VkPipelineLayout m_DefaultPipeLayout = VK_NULL_HANDLE;
-		VkPipeline m_DefaultPipeline = VK_NULL_HANDLE;
-
 #ifdef VKP_DEBUG
 		VkDebugUtilsMessengerEXT m_Debug = VK_NULL_HANDLE;
 #endif
@@ -130,16 +137,18 @@ namespace VKP
 
 		PushConstantData m_PushData = {};
 
-		Buffer m_ObjVBO = {};
-		Buffer m_ObjIBO = {};
-		Texture m_ObjTexture = {};
-		uint32_t m_NumIndices = 0;
+		std::vector<Renderable*> m_Renderables = {};
 
+		/* TEMPORARY */
+
+		Texture m_ObjTexture = {};
 		std::vector<Buffer> m_UniformBuffers;
 
 		VkDescriptorSetLayout m_DescSetLayout = VK_NULL_HANDLE;
 		VkDescriptorPool m_DescPool = VK_NULL_HANDLE;
 		std::vector<VkDescriptorSet> m_DescSets;
+
+		/* END TEMPORARY */
 
 		std::vector<VkSemaphore> m_CanAcquireImage; // Can get image from the swapchain for rendering
 		std::vector<VkSemaphore> m_CanPresentImage; // Render finished, can push image to the swapchain
@@ -182,15 +191,11 @@ namespace VKP
 		bool CreateDescriptorPool();
 		bool AllocateDescriptorSets();
 
-		bool CreatePipeline();
 
 		bool CreateCommandPool();
 		bool AllocateCommandBuffer();
 
 		bool CreateSyncObjects();
-
-		bool LoadObjModel();
-		bool LoadObjTexture();
 
 		bool RecordCommandBuffer(VkCommandBuffer buffer, size_t imageId);
 

@@ -4,6 +4,8 @@
 #include "Core/Window.hpp"
 
 #include "Rendering/Context.hpp"
+#include "Rendering/Renderable.hpp"
+#include "Rendering/Mesh.hpp"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
@@ -89,6 +91,14 @@ namespace VKP
 		if (success) success = CreateCommandPool();
 		if (success) success = AllocateCommandBuffer();
 		if (success) success = CreateSyncObjects();
+		/* TEMPORARY */
+		if (success) success = CreateUniformBuffers();
+		if (success) success = CreateDescriptorSetLayout();
+		if (success) success = CreateDescriptorPool();
+		if (success) success = AllocateDescriptorSets();
+		/* END TEMPORARY */
+
+		if (success) m_Renderables.reserve(1000);
 
 		return success;
 	}
@@ -192,6 +202,14 @@ namespace VKP
 		vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
 
 		return success;
+	}
+
+	void Context::DestroyBuffer(Buffer& buffer)
+	{
+		vkDeviceWaitIdle(s_Device);
+
+		if (buffer.BufferHandle != VK_NULL_HANDLE)
+			vmaDestroyBuffer(s_Allocator, buffer.BufferHandle, buffer.MemoryHandle);
 	}
 
 	bool Context::CreatePipelineLayout(VkPipelineLayout* layout)
@@ -363,6 +381,17 @@ namespace VKP
 			vkDestroyShaderModule(s_Device, m, nullptr);
 
 		return true;
+	}
+
+	void Context::DestroyMaterial(Material& material)
+	{
+		vkDeviceWaitIdle(s_Device);
+
+		if (material.PipeLayout != VK_NULL_HANDLE)
+			vkDestroyPipelineLayout(s_Device, material.PipeLayout, nullptr);
+
+		if (material.Pipe != VK_NULL_HANDLE)
+			vkDestroyPipeline(s_Device, material.Pipe, nullptr);
 	}
 
 	bool Context::CreateImage(Texture& texture, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkSampleCountFlagBits samples)
@@ -547,6 +576,20 @@ namespace VKP
 		return true;
 	}
 
+	void Context::DestroyTexture(Texture& texture)
+	{
+		vkDeviceWaitIdle(s_Device);
+
+		if (texture.SamplerHandle != VK_NULL_HANDLE)
+			vkDestroySampler(s_Device, texture.SamplerHandle, nullptr);
+
+		if (texture.ViewHandle != VK_NULL_HANDLE)
+			vkDestroyImageView(s_Device, texture.ViewHandle, nullptr);
+
+		if (texture.ImageHandle != VK_NULL_HANDLE)
+			vmaDestroyImage(s_Allocator, texture.ImageHandle, texture.MemoryHandle);
+	}
+
 	bool Context::SubmitTransfer(const std::function<void(VkCommandBuffer)>& fn)
 	{
 		VkCommandBuffer cmdBuffer = VK_NULL_HANDLE;
@@ -608,6 +651,11 @@ namespace VKP
 		vkQueueWaitIdle(m_TransferQueue); // TODO: Fence
 
 		return true;
+	}
+
+	void Context::SubmitRenderable(Renderable* renderable)
+	{
+		m_Renderables.push_back(renderable);
 	}
 
 	void Context::SwapBuffers()
@@ -1260,11 +1308,13 @@ namespace VKP
 		{
 			auto& b = m_UniformBuffers.emplace_back();
 
-			if (!CreateBuffer(b, sizeof(glm::mat4), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
+			if (!CreateBuffer(b, sizeof(CameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
 			{
 				VKP_ERROR("Unable to create uniform buffer for in-flight frame {}", i);
 				return false;
 			}
+
+			m_DeletionQueue.Push([=]() { vmaDestroyBuffer(s_Allocator, b.BufferHandle, b.MemoryHandle); });
 		}
 
 		return true;
@@ -1272,7 +1322,7 @@ namespace VKP
 
 	bool Context::CreateDescriptorSetLayout()
 	{
-		std::vector<VkDescriptorSetLayoutBinding> bindings(2);
+		std::vector<VkDescriptorSetLayoutBinding> bindings(1);//(2);
 		
 		auto& binding = bindings[0];
 		binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -1280,11 +1330,11 @@ namespace VKP
 		binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 		binding.binding = 0;
 
-		auto& samplerBinding = bindings[1];
-		samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		samplerBinding.descriptorCount = 1;
-		samplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-		samplerBinding.binding = 1;
+		// auto& samplerBinding = bindings[1];
+		// samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		// samplerBinding.descriptorCount = 1;
+		// samplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		// samplerBinding.binding = 1;
 
 		VkDescriptorSetLayoutCreateInfo layoutInfo = {};
 		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -1297,20 +1347,22 @@ namespace VKP
 			return false;
 		}
 
+		m_DeletionQueue.Push([=]() { vkDestroyDescriptorSetLayout(s_Device, m_DescSetLayout, nullptr); });
+
 		return true;
 	}
 
 	bool Context::CreateDescriptorPool()
 	{
-		std::vector<VkDescriptorPoolSize> sizes(2);
+		std::vector<VkDescriptorPoolSize> sizes(1);//(2);
 		
 		auto& size = sizes[0];
 		size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		size.descriptorCount = MAX_CONCURRENT_FRAMES; // 2 descriptors, 1 x concurrent frame
 
-		auto& samplerSize = sizes[1];
-		samplerSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		samplerSize.descriptorCount = MAX_CONCURRENT_FRAMES;
+		// auto& samplerSize = sizes[1];
+		// samplerSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		// samplerSize.descriptorCount = MAX_CONCURRENT_FRAMES;
 
 		VkDescriptorPoolCreateInfo poolInfo = {};
 		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -1323,6 +1375,8 @@ namespace VKP
 			VKP_ERROR("Unable to create descriptor pool");
 			return false;
 		}
+
+		m_DeletionQueue.Push([=]() { vkDestroyDescriptorPool(s_Device, m_DescPool, nullptr); });
 
 		return true;
 	}
@@ -1354,12 +1408,12 @@ namespace VKP
 			bufInfo.offset = 0;
 			bufInfo.range = VK_WHOLE_SIZE;
 
-			VkDescriptorImageInfo imgInfo = {};
-			imgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			imgInfo.imageView = m_ObjTexture.ViewHandle;
-			imgInfo.sampler = m_ObjTexture.SamplerHandle;
+			// VkDescriptorImageInfo imgInfo = {};
+			// imgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			// imgInfo.imageView = m_ObjTexture.ViewHandle;
+			// imgInfo.sampler = m_ObjTexture.SamplerHandle;
 
-			std::vector<VkWriteDescriptorSet> writeInfos(2);
+			std::vector<VkWriteDescriptorSet> writeInfos(1);//(2);
 
 			auto& bufWriteInfo = writeInfos[0];
 			bufWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1370,173 +1424,17 @@ namespace VKP
 			bufWriteInfo.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 			bufWriteInfo.descriptorCount = 1;
 
-			auto& imgWriteInfo = writeInfos[1];
-			imgWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			imgWriteInfo.pImageInfo = &imgInfo;
-			imgWriteInfo.dstSet = m_DescSets[i];
-			imgWriteInfo.dstBinding = 1;
-			imgWriteInfo.dstArrayElement = 0;
-			imgWriteInfo.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			imgWriteInfo.descriptorCount = 1;
+			// auto& imgWriteInfo = writeInfos[1];
+			// imgWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			// imgWriteInfo.pImageInfo = &imgInfo;
+			// imgWriteInfo.dstSet = m_DescSets[i];
+			// imgWriteInfo.dstBinding = 1;
+			// imgWriteInfo.dstArrayElement = 0;
+			// imgWriteInfo.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			// imgWriteInfo.descriptorCount = 1;
 
 			vkUpdateDescriptorSets(s_Device, writeInfos.size(), writeInfos.data(), 0, nullptr);
 		}
-
-		return true;
-	}
-
-	bool Context::CreatePipeline()
-	{
-		std::string moduleNames[] = {
-			"assets/shaders/base.vert.spv",
-			"assets/shaders/base.frag.spv",
-		};
-
-		const VkShaderStageFlagBits moduleStages[] = {
-			VK_SHADER_STAGE_VERTEX_BIT,
-			VK_SHADER_STAGE_FRAGMENT_BIT,
-		};
-
-		std::vector<VkShaderModuleCreateInfo> moduleInfos(2);
-		std::vector<VkShaderModule> modules(2);
-
-		std::vector<VkPipelineShaderStageCreateInfo> stageInfos(2);
-
-		for (size_t i = 0; i < 2; i++)
-		{
-			std::ifstream file(moduleNames[i], std::ios::ate | std::ios::binary);
-
-			if (!file.is_open())
-			{
-				VKP_ERROR("Unable to locate shader module file: {}", moduleNames[i]);
-				return false;
-			}
-
-			const size_t size = file.tellg();
-			std::vector<char> fileBuffer(size);
-
-			file.seekg(0);
-			file.read(fileBuffer.data(), size);
-
-			file.close();
-
-			auto& moduleInfo = moduleInfos[i];
-			moduleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-			moduleInfo.pCode = reinterpret_cast<uint32_t*>(fileBuffer.data());
-			moduleInfo.codeSize = size;
-
-			if (vkCreateShaderModule(s_Device, &moduleInfo, nullptr, &modules[i]) != VK_SUCCESS)
-			{
-				VKP_ERROR("Unable to create shader module: {}", moduleNames[i]);
-				return false;
-			}
-
-			auto &stageInfo = stageInfos[i];
-			stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-			stageInfo.module = modules[i];
-			stageInfo.pName = "main";
-			stageInfo.stage = moduleStages[i];
-		}
-
-		std::vector<VkDynamicState> dynamicStates = {
-			VK_DYNAMIC_STATE_VIEWPORT,
-			VK_DYNAMIC_STATE_SCISSOR,
-		};
-
-		VkPipelineDynamicStateCreateInfo dynInfo = {};
-		dynInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-		dynInfo.pDynamicStates = dynamicStates.data();
-		dynInfo.dynamicStateCount = dynamicStates.size();
-
-		std::vector<VkVertexInputBindingDescription> vertBind = {};
-		std::vector<VkVertexInputAttributeDescription> descriptions = {};
-
-		Vertex::PopulateBindingDescription(vertBind, descriptions);
-
-		VkPipelineVertexInputStateCreateInfo vertInfo = {};
-		vertInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-		vertInfo.pVertexBindingDescriptions = vertBind.data();
-		vertInfo.vertexBindingDescriptionCount = vertBind.size();
-		vertInfo.vertexAttributeDescriptionCount = descriptions.size();
-		vertInfo.pVertexAttributeDescriptions = descriptions.data();
-
-		VkPipelineInputAssemblyStateCreateInfo inputInfo = {};
-		inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-		inputInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-		inputInfo.primitiveRestartEnable = VK_FALSE;
-
-		VkPipelineViewportStateCreateInfo viewportInfo = {};
-		viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-		viewportInfo.viewportCount = 1;
-		viewportInfo.scissorCount = 1;
-
-		VkPipelineRasterizationStateCreateInfo rasterInfo = {};
-		rasterInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-		rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
-		rasterInfo.cullMode = VK_CULL_MODE_BACK_BIT;
-		rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-		rasterInfo.rasterizerDiscardEnable = VK_FALSE;
-		rasterInfo.depthBiasEnable = VK_FALSE;
-		rasterInfo.lineWidth = 1.0f;
-
-		VkPipelineMultisampleStateCreateInfo sampleInfo = {};
-		sampleInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-		sampleInfo.rasterizationSamples = m_SwapchainData.NumSamples;
-
-		VkPipelineColorBlendAttachmentState blendState = {};
-		blendState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-		blendState.blendEnable = VK_FALSE;
-
-		VkPipelineColorBlendStateCreateInfo blendInfo = {};
-		blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-		blendInfo.logicOpEnable = VK_FALSE;
-		blendInfo.pAttachments = &blendState;
-		blendInfo.attachmentCount = 1;
-
-		VkPipelineDepthStencilStateCreateInfo depthInfo = {};
-		depthInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-		depthInfo.depthTestEnable = VK_TRUE;
-		depthInfo.depthWriteEnable = VK_TRUE;
-		depthInfo.depthCompareOp = VK_COMPARE_OP_LESS;
-		depthInfo.depthBoundsTestEnable = VK_FALSE;
-		depthInfo.stencilTestEnable = VK_FALSE;
-
-		if (!CreatePipelineLayout(&m_DefaultPipeLayout))
-		{
-			for (auto& m : modules)
-				vkDestroyShaderModule(s_Device, m, nullptr);
-
-			return false;
-		}
-
-		VkGraphicsPipelineCreateInfo pipeInfo = {};
-		pipeInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-		pipeInfo.pStages = stageInfos.data();
-		pipeInfo.stageCount = stageInfos.size();
-		pipeInfo.renderPass = m_DefaultRenderPass;
-		pipeInfo.subpass = 0;
-		pipeInfo.layout = m_DefaultPipeLayout;
-		pipeInfo.pDynamicState = &dynInfo;
-		pipeInfo.pVertexInputState = &vertInfo;
-		pipeInfo.pInputAssemblyState = &inputInfo;
-		pipeInfo.pViewportState = &viewportInfo;
-		pipeInfo.pRasterizationState = &rasterInfo;
-		pipeInfo.pMultisampleState = &sampleInfo;
-		pipeInfo.pColorBlendState = &blendInfo;
-		pipeInfo.pDepthStencilState = &depthInfo;
-
-		if (vkCreateGraphicsPipelines(s_Device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &m_DefaultPipeline) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to create default pipeline");
-
-			for (auto& m : modules)
-				vkDestroyShaderModule(s_Device, m, nullptr);
-
-			return false;
-		}
-
-		for (auto& m : modules)
-			vkDestroyShaderModule(s_Device, m, nullptr);
 
 		return true;
 	}
@@ -1637,101 +1535,49 @@ namespace VKP
 		return true;
 	}
 
-	bool Context::LoadObjModel()
-	{
-		tinyobj::attrib_t attrib;
-		std::vector<tinyobj::shape_t> shapes;
-		std::vector<tinyobj::material_t> materials;
-		std::string warnings, errors;
+	// bool Context::LoadObjTexture()
+	// {
+	// 	int w = 0, h = 0, nrChannels = 0;
+	// 	uint8_t* data = stbi_load(OBJ_TEXTURE_PATH, &w, &h, &nrChannels, STBI_rgb_alpha);
 
-		if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warnings, &errors, OBJ_MODEL_PATH))
-		{
-			VKP_ERROR("Unable to load OBJ model file {}", OBJ_MODEL_PATH);
-			return false;
-		}
+	// 	if (data == nullptr)
+	// 	{
+	// 		VKP_ERROR("Unable to locate texture file");
+	// 		return false;
+	// 	}
 
-		std::vector<Vertex> vertices;
-		std::vector<uint32_t> indices;
-		std::unordered_map<Vertex, uint32_t> uniqueVertices;
+	// 	Buffer staging = {};
 
-		for (const auto& s : shapes)
-		{
-			for (const auto& i : s.mesh.indices)
-			{
-				Vertex v{};
+	// 	if (!CreateBuffer(staging, w * h * 4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
+	// 	{
+	// 		VKP_ERROR("Unable to create staging buffer for texture upload");
+	// 		stbi_image_free(data);
+	// 		return false;
+	// 	}
 
-				v.Position = {
-					attrib.vertices[3 * i.vertex_index + 0],
-					attrib.vertices[3 * i.vertex_index + 1],
-					attrib.vertices[3 * i.vertex_index + 2]
-				};
+	// 	void* bufData = nullptr;
+	// 	vmaMapMemory(s_Allocator, staging.MemoryHandle, &bufData);
+	// 	memcpy(bufData, data, w * h * 4);
+	// 	vmaUnmapMemory(s_Allocator, staging.MemoryHandle);
 
-				v.TexCoord = {
-					attrib.texcoords[2 * i.texcoord_index + 0],
-					1.0f - attrib.texcoords[2 * i.texcoord_index + 1]
-				};
+	// 	stbi_image_free(data);
 
-				v.Color = { 1.0f, 1.0f, 1.0f };
+	// 	if (!CreateImage(m_ObjTexture, w, h, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT))
+	// 	{
+	// 		VKP_ERROR("Unable to create image object");
+	// 		vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
+	// 		return false;
+	// 	}
 
-				if (uniqueVertices.count(v) == 0) {
-					uniqueVertices[v] = static_cast<uint32_t>(vertices.size());
-					vertices.push_back(v);
-				}
+	// 	bool success = PopulateImage(m_ObjTexture, staging, w, h);
 
-				indices.push_back(uniqueVertices[v]);
-			}
-		}
+	// 	vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
 
-		bool success = CreateVertexBuffer(m_ObjVBO, vertices);
-		if (success) success = CreateIndexBuffer(m_ObjIBO, indices);
-		if (success) m_NumIndices = indices.size();
+	// 	if (success) success = CreateImageView(m_ObjTexture, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+	// 	if (success) success = CreateImageSampler(m_ObjTexture);
 
-		return success;
-	}
-
-	bool Context::LoadObjTexture()
-	{
-		int w = 0, h = 0, nrChannels = 0;
-		uint8_t* data = stbi_load(OBJ_TEXTURE_PATH, &w, &h, &nrChannels, STBI_rgb_alpha);
-
-		if (data == nullptr)
-		{
-			VKP_ERROR("Unable to locate texture file");
-			return false;
-		}
-
-		Buffer staging = {};
-
-		if (!CreateBuffer(staging, w * h * 4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
-		{
-			VKP_ERROR("Unable to create staging buffer for texture upload");
-			stbi_image_free(data);
-			return false;
-		}
-
-		void* bufData = nullptr;
-		vmaMapMemory(s_Allocator, staging.MemoryHandle, &bufData);
-		memcpy(bufData, data, w * h * 4);
-		vmaUnmapMemory(s_Allocator, staging.MemoryHandle);
-
-		stbi_image_free(data);
-
-		if (!CreateImage(m_ObjTexture, w, h, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT))
-		{
-			VKP_ERROR("Unable to create image object");
-			vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
-			return false;
-		}
-
-		bool success = PopulateImage(m_ObjTexture, staging, w, h);
-
-		vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
-
-		if (success) success = CreateImageView(m_ObjTexture, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
-		if (success) success = CreateImageSampler(m_ObjTexture);
-
-		return success;
-	}
+	// 	return success;
+	// }
 
 	bool Context::RecordCommandBuffer(VkCommandBuffer buffer, size_t imageId)
 	{
@@ -1763,6 +1609,44 @@ namespace VKP
 
 		vkCmdSetViewport(buffer, 0, 1, &m_Viewport);
 		vkCmdSetScissor(buffer, 0, 1, &m_Scissor);
+
+		if (m_Renderables.size() > 0)
+		{
+			VkPipeline pipeline = VK_NULL_HANDLE;
+			VkDeviceSize offset = 0;
+
+			CameraData mats = {};
+
+			mats.Projection = glm::perspective(glm::radians(45.0f), m_AspectRatio, 0.1f, 100.0f);
+			mats.View = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+			mats.VP = mats.Projection * mats.View;
+
+			const auto& ubo = m_UniformBuffers[m_CurrentFrame];
+			void* data = nullptr;
+
+			vmaMapMemory(s_Allocator, ubo.MemoryHandle, &data);
+			memcpy(data, &mats, sizeof(CameraData));
+			vmaUnmapMemory(s_Allocator, ubo.MemoryHandle);
+
+			for (const auto& r : m_Renderables)
+			{
+				if (pipeline != r->Mat->Pipe)
+				{
+					pipeline = r->Mat->Pipe;
+
+					vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+					vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->Mat->PipeLayout, 0, 1, &m_DescSets[m_CurrentFrame], 0, nullptr);
+					vkCmdPushConstants(buffer, r->Mat->PipeLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstantData), &m_PushData);
+				}
+
+				vkCmdBindVertexBuffers(buffer, 0, 1, &r->Model->VBO.BufferHandle, &offset);
+				vkCmdBindIndexBuffer(buffer, r->Model->IBO.BufferHandle, 0, VK_INDEX_TYPE_UINT32);
+
+				vkCmdDrawIndexed(buffer, r->Model->NumIndices, 1, 0, 0, 0);
+			}
+		}
+
+		m_Renderables.clear();
 
 		vkCmdEndRenderPass(buffer);
 

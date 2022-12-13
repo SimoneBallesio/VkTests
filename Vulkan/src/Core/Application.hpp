@@ -1,5 +1,9 @@
 #pragma once
 
+#include "Rendering/Renderable.hpp"
+#include "Rendering/Material.hpp"
+#include "Rendering/Mesh.hpp"
+
 namespace VKP
 {
 
@@ -12,7 +16,11 @@ namespace VKP
 		Application(Application&) = delete;
 		~Application();
 
+		void Init();
+
 		void Run();
+		void Draw();
+
 		void Stop();
 
 		Application& operator=(Application&) = delete;
@@ -23,6 +31,8 @@ namespace VKP
 	private:
 		Context* m_Context = nullptr;
 		Window* m_Window = nullptr;
+
+		Renderable m_Model = {};
 
 		bool m_Running = true;
 

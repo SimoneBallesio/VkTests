@@ -13,7 +13,7 @@ namespace VKP
 		VkPipelineLayout PipeLayout = VK_NULL_HANDLE;
 
 		Material() = default;
-		~Material() = default;
+		~Material();
 
 		static Material* Create(const std::string& name);
 

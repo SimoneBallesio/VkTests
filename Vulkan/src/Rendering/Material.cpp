@@ -8,6 +8,12 @@ namespace VKP
 
 	std::unordered_map<std::string, Material*> Material::s_ResourceMap = {};
 
+	Material::~Material()
+	{
+		Context::Get().DestroyMaterial(*this);
+		s_ResourceMap.erase(this->Path);
+	}
+
 	Material* Material::Create(const std::string& name)
 	{
 		auto it = s_ResourceMap.find(name);

@@ -13,6 +13,14 @@ namespace VKP
 	
 	std::unordered_map<std::string, Mesh*> Mesh::s_ResourceMap = {};
 
+	Mesh::~Mesh()
+	{
+		Context::Get().DestroyBuffer(VBO);
+		Context::Get().DestroyBuffer(IBO);
+
+		s_ResourceMap.erase(Path);
+	}
+
 	Mesh* Mesh::Create(const std::string& name)
 	{
 		auto it = s_ResourceMap.find(name);
@@ -64,6 +72,7 @@ namespace VKP
 		}
 
 		auto mesh = new Mesh();
+		mesh->Path = name;
 
 		bool success = Context::Get().CreateVertexBuffer(mesh->VBO, vertices);
 		if (success) success = Context::Get().CreateIndexBuffer(mesh->IBO, indices);
