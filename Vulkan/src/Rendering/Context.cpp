@@ -27,6 +27,12 @@
 namespace VKP
 {
 
+	static uint32_t GetAlignedSize(uint32_t size, uint32_t minAlignment)
+	{
+		if (minAlignment == 0) return size;
+		return (size + minAlignment - 1) & ~(minAlignment - 1);
+	}
+
 	void DeletionQueue::Push(std::function<void()>&& fn)
 	{
 		Queue.push_back(fn);
@@ -121,6 +127,17 @@ namespace VKP
 			VKP_ERROR("Unable to create buffer");
 			return false;
 		}
+
+		uint32_t minAlignment = 0;
+
+		if (bufferUsage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
+			minAlignment = m_MinUboAlignment;
+
+		else if (bufferUsage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+			minAlignment = m_MinSsboAlignment;
+
+		buffer.Size = (uint32_t)size;
+		buffer.AlignedSize = GetAlignedSize(buffer.Size, minAlignment);
 
 		return true;
 	}
@@ -947,8 +964,14 @@ namespace VKP
 
 				m_PhysDevice = d;
 
-				VkSampleCountFlagBits maxSamples = GetMsaaMaxSamples();
+				VkPhysicalDeviceProperties props;
+				vkGetPhysicalDeviceProperties(d, &props);
+
+				VkSampleCountFlagBits maxSamples = GetMsaaMaxSamples(props);
 				m_SwapchainData.NumSamples = std::min(VK_SAMPLE_COUNT_8_BIT, maxSamples);
+
+				m_MinUboAlignment = props.limits.minUniformBufferOffsetAlignment;
+				m_MinSsboAlignment = props.limits.minStorageBufferOffsetAlignment;
 
 				return true;
 			}
@@ -1659,27 +1682,24 @@ namespace VKP
 		return true;
 	}
 
-	VkSampleCountFlagBits Context::GetMsaaMaxSamples() const
+	VkSampleCountFlagBits Context::GetMsaaMaxSamples(const VkPhysicalDeviceProperties& props) const
 	{
-		VkPhysicalDeviceProperties p = {};
-		vkGetPhysicalDeviceProperties(m_PhysDevice, &p);
-
-		if (p.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_64_BIT)
+		if (props.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_64_BIT)
 			return VK_SAMPLE_COUNT_64_BIT;
 
-		else if (p.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_32_BIT)
+		else if (props.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_32_BIT)
 			return VK_SAMPLE_COUNT_32_BIT;
 
-		else if (p.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_16_BIT)
+		else if (props.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_16_BIT)
 			return VK_SAMPLE_COUNT_16_BIT;
 
-		else if (p.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_8_BIT)
+		else if (props.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_8_BIT)
 			return VK_SAMPLE_COUNT_8_BIT;
 
-		else if (p.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_4_BIT)
+		else if (props.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_4_BIT)
 			return VK_SAMPLE_COUNT_4_BIT;
 
-		else if (p.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_2_BIT)
+		else if (props.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_2_BIT)
 			return VK_SAMPLE_COUNT_2_BIT;
 
 		return VK_SAMPLE_COUNT_1_BIT;

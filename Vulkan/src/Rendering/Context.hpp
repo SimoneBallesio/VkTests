@@ -139,6 +139,9 @@ namespace VKP
 
 		std::vector<Renderable*> m_Renderables = {};
 
+		uint32_t m_MinUboAlignment = 0;
+		uint32_t m_MinSsboAlignment = 0;
+
 		/* TEMPORARY */
 
 		Texture m_ObjTexture = {};
@@ -199,7 +202,7 @@ namespace VKP
 
 		bool RecordCommandBuffer(VkCommandBuffer buffer, size_t imageId);
 
-		VkSampleCountFlagBits GetMsaaMaxSamples() const;
+		VkSampleCountFlagBits GetMsaaMaxSamples(const VkPhysicalDeviceProperties& props) const;
 
 		VkExtent2D ChooseExtents() const;
 		VkSurfaceFormatKHR ChooseSurfaceFormat() const;
