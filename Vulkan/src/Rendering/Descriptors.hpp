@@ -5,110 +5,90 @@
 namespace VKP
 {
 
-	struct DescriptorPoolSizes
+	struct DescriptorList
 	{
-		std::pair<VkDescriptorType, float> Sizes[11] = {
-			{ VK_DESCRIPTOR_TYPE_SAMPLER, 0.5f },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4.0f },
-			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 4.0f },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1.0f },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1.0f },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1.0f },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2.0f },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2.0f },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1.0f },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1.0f },
-			{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 0.5f },
-		};
+		std::vector<VkDescriptorSetLayoutBinding> Bindings = {};
+		size_t Hash() const;
+		bool operator==(const DescriptorList& other) const;
 	};
 
-	class DescriptorAllocator final
+	struct DescriptorListHash
 	{
-		friend class DescriptorCache;
+		size_t operator()(const DescriptorList& list) const;
+	};
 
+	class DescriptorSetLayoutCache final
+	{
 	public:
-		DescriptorAllocator(DescriptorAllocator&) = delete;
-		~DescriptorAllocator();
+		DescriptorSetLayoutCache(DescriptorSetLayoutCache&) = delete;
+		~DescriptorSetLayoutCache();
 
-		void ResetPools();
+		VkDescriptorSetLayout Allocate(DescriptorList& list);
 
-		bool Allocate(VkDescriptorSet* set, VkDescriptorSetLayout layout);
+		DescriptorSetLayoutCache& operator=(DescriptorSetLayoutCache&) = delete;
 
-		DescriptorAllocator& operator=(DescriptorAllocator&) = delete;
-
-		static DescriptorAllocator* Create(VkDevice device);
+		static DescriptorSetLayoutCache* Create(VkDevice device);
 
 	private:
-		VkDevice m_Device = VK_NULL_HANDLE;
+		VkDevice m_Device;
 
-		DescriptorPoolSizes m_Sizes = {};
+		std::unordered_map<DescriptorList, VkDescriptorSetLayout, DescriptorListHash> m_ResourceMap = {};
+
+		DescriptorSetLayoutCache(VkDevice device) : m_Device(device) {}
+	};
+
+	class DescriptorSetAllocator final
+	{
+	public:
+		DescriptorSetAllocator(DescriptorSetAllocator&) = delete;
+		~DescriptorSetAllocator();
+
+		bool Allocate(VkDescriptorSet* set, VkDescriptorSetLayout layout);
+		void Reset();
+
+		DescriptorSetAllocator& operator=(DescriptorSetAllocator&) = delete;
+
+		static DescriptorSetAllocator* Create(VkDevice device);
+
+	private:
+		VkDevice m_Device;
 
 		std::vector<VkDescriptorPool> m_FreePools = {};
 		std::vector<VkDescriptorPool> m_UsedPools = {};
 
 		VkDescriptorPool m_CurrentPool = VK_NULL_HANDLE;
 
-		DescriptorAllocator(VkDevice device) : m_Device(device) {}
+		DescriptorSetAllocator(VkDevice device) : m_Device(device) {}
 
-		VkDescriptorPool GrabFreePool();
+		VkDescriptorPool GetOrAllocatePool();
 	};
 
-	struct DescriptorLayoutInfo
-	{
-		std::vector<VkDescriptorSetLayoutBinding> Bindings;
-		size_t Hash() const;
-		bool operator==(const DescriptorLayoutInfo& other) const;
-	};
-
-	struct DescriptorLayoutHash
-	{
-		inline size_t operator()(const DescriptorLayoutInfo& info) const { return info.Hash(); }
-	};
-
-	class DescriptorLayoutCache final
-	{
-		friend class DescriptorCache;
-
-	public:
-		DescriptorLayoutCache(DescriptorLayoutCache&) = delete;
-		~DescriptorLayoutCache();
-
-		VkDescriptorSetLayout Allocate(VkDescriptorSetLayoutCreateInfo* info);
-
-		DescriptorLayoutCache& operator=(DescriptorLayoutCache&) = delete;
-
-		static DescriptorLayoutCache* Create(VkDevice device);
-
-	private:
-		VkDevice m_Device = VK_NULL_HANDLE;
-		std::unordered_map<DescriptorLayoutInfo, VkDescriptorSetLayout, DescriptorLayoutHash> m_ResourceMap = {};
-
-		DescriptorLayoutCache(VkDevice device) : m_Device(device) {}
-	};
-
-	class DescriptorCache final
+	class DescriptorSetCache final
 	{
 	public:
-		DescriptorCache(DescriptorCache&) = delete;
-		~DescriptorCache();
+		DescriptorSetCache(DescriptorSetCache&) = delete;
+		~DescriptorSetCache() = default;
 
-		DescriptorCache& BindBuffer(uint32_t binding, VkDescriptorBufferInfo* bufferInfo, VkDescriptorType type, VkShaderStageFlags stageFlags);
-		DescriptorCache& BindImage(uint32_t binding, VkDescriptorImageInfo* imageInfo, VkDescriptorType type, VkShaderStageFlags stageFlags);
+		DescriptorSetCache& BindBuffer(uint32_t binding, VkDescriptorBufferInfo* bufInfo, VkDescriptorType type, VkShaderStageFlags flags);
+		DescriptorSetCache& BindImage(uint32_t binding, VkDescriptorImageInfo* imgInfo, VkDescriptorType type, VkShaderStageFlags flags);
 
-		bool Build(VkDescriptorSet& set, VkDescriptorSetLayout& layout);
+		bool Build(VkDescriptorSet& set);
 
-		DescriptorCache& operator=(DescriptorCache&) = delete;
+		DescriptorSetCache& operator=(DescriptorSetCache&) = delete;
 
-		static DescriptorCache* Create(DescriptorAllocator* allocator, DescriptorLayoutCache* layoutCache);
+		static DescriptorSetCache* Create(VkDevice device, DescriptorSetLayoutCache* cache, DescriptorSetAllocator* alloc);
 
 	private:
-		DescriptorAllocator* m_Allocator = nullptr;
-		DescriptorLayoutCache* m_LayoutCache = nullptr;
+		VkDevice m_Device;
 
-		std::vector<VkWriteDescriptorSet> m_WriteDescriptors = {};
-		std::vector<VkDescriptorSetLayoutBinding> m_Bindings = {};
+		DescriptorSetLayoutCache* m_LayoutCache;
+		DescriptorSetAllocator* m_Allocator;
 
-		DescriptorCache(DescriptorAllocator* allocator, DescriptorLayoutCache* layoutCache) : m_Allocator(allocator), m_LayoutCache(layoutCache) {}
+		DescriptorList m_Bindings = {};
+		std::vector<VkWriteDescriptorSet> m_Writes = {};
+
+		DescriptorSetCache(VkDevice device, DescriptorSetLayoutCache* cache, DescriptorSetAllocator* alloc)
+			: m_Device(device), m_LayoutCache(cache), m_Allocator(alloc) {}
 	};
 
 }
