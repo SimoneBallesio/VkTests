@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Rendering/Buffer.hpp"
+#include "Rendering/Descriptors.hpp"
 #include "Rendering/Texture.hpp"
 #include "Rendering/Material.hpp"
 #include "Rendering/VertexData.hpp"
@@ -74,6 +75,7 @@ namespace VKP
 		bool CopyBuffer(const Buffer& src, const Buffer& dst, VkDeviceSize size);
 		bool CreateVertexBuffer(Buffer& vbo, const std::vector<Vertex>& vertices);
 		bool CreateIndexBuffer(Buffer& ibo, const std::vector<uint32_t>& indices);
+		bool CreateUniformBuffer(Buffer& ubo, VkDeviceSize size);
 		void DestroyBuffer(Buffer& buffer);
 
 		bool CreatePipelineLayout(VkPipelineLayout* layout);
@@ -142,16 +144,7 @@ namespace VKP
 		uint32_t m_MinUboAlignment = 0;
 		uint32_t m_MinSsboAlignment = 0;
 
-		/* TEMPORARY */
-
-		Texture m_ObjTexture = {};
-		std::vector<Buffer> m_UniformBuffers;
-
-		VkDescriptorSetLayout m_DescSetLayout = VK_NULL_HANDLE;
-		VkDescriptorPool m_DescPool = VK_NULL_HANDLE;
-		std::vector<VkDescriptorSet> m_DescSets;
-
-		/* END TEMPORARY */
+		Buffer m_UBO = {};
 
 		std::vector<VkSemaphore> m_CanAcquireImage; // Can get image from the swapchain for rendering
 		std::vector<VkSemaphore> m_CanPresentImage; // Render finished, can push image to the swapchain
@@ -187,13 +180,6 @@ namespace VKP
 
 		bool CreateRenderPass();
 		bool CreateFramebuffers();
-
-		bool CreateUniformBuffers();
-
-		bool CreateDescriptorSetLayout();
-		bool CreateDescriptorPool();
-		bool AllocateDescriptorSets();
-
 
 		bool CreateCommandPool();
 		bool AllocateCommandBuffer();

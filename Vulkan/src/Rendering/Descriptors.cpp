@@ -192,6 +192,7 @@ namespace VKP
 		poolInfo.pPoolSizes = sizes;
 		poolInfo.poolSizeCount = 11;
 		poolInfo.maxSets = 1000;
+		poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 
 		VkDescriptorPool pool;
 
@@ -256,11 +257,6 @@ namespace VKP
 		m_Writes.clear();
 
 		return true;
-	}
-
-	DescriptorSetCache* DescriptorSetCache::Create(VkDevice device, DescriptorSetLayoutCache* cache, DescriptorSetAllocator* alloc)
-	{
-		return new DescriptorSetCache(device, cache, alloc);
 	}
 
 }

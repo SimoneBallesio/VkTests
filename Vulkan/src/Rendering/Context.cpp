@@ -14,9 +14,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include <tiny_obj_loader.h>
-#include <stb_image.h>
-
 #include <fstream>
 
 #define MAX_CONCURRENT_FRAMES 2
@@ -97,12 +94,7 @@ namespace VKP
 		if (success) success = CreateCommandPool();
 		if (success) success = AllocateCommandBuffer();
 		if (success) success = CreateSyncObjects();
-		/* TEMPORARY */
-		if (success) success = CreateUniformBuffers();
-		if (success) success = CreateDescriptorSetLayout();
-		if (success) success = CreateDescriptorPool();
-		if (success) success = AllocateDescriptorSets();
-		/* END TEMPORARY */
+		if (success) success = CreateUniformBuffer(m_UBO, sizeof(CameraData));
 
 		if (success) m_Renderables.reserve(1000);
 
@@ -127,17 +119,6 @@ namespace VKP
 			VKP_ERROR("Unable to create buffer");
 			return false;
 		}
-
-		uint32_t minAlignment = 0;
-
-		if (bufferUsage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
-			minAlignment = m_MinUboAlignment;
-
-		else if (bufferUsage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
-			minAlignment = m_MinSsboAlignment;
-
-		buffer.Size = (uint32_t)size;
-		buffer.AlignedSize = GetAlignedSize(buffer.Size, minAlignment);
 
 		return true;
 	}
@@ -186,6 +167,8 @@ namespace VKP
 		bool success = CopyBuffer(staging, vbo, size);
 		vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
 
+		vbo.Size = (uint32_t)size;
+
 		return success;
 	}
 
@@ -218,7 +201,22 @@ namespace VKP
 		bool success = CopyBuffer(staging, ibo, size);
 		vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
 
+		ibo.Size = (uint32_t)size;
+
 		return success;
+	}
+
+	bool Context::CreateUniformBuffer(Buffer& ubo, VkDeviceSize size)
+	{
+		const VkDeviceSize alignedSize = GetAlignedSize(size, m_MinUboAlignment);
+
+		if (!CreateBuffer(ubo, alignedSize * MAX_CONCURRENT_FRAMES, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
+		{
+			VKP_ERROR("Unable to create uniform buffer");
+			return false;
+		}
+
+		return true;
 	}
 
 	void Context::DestroyBuffer(Buffer& buffer)
@@ -240,8 +238,8 @@ namespace VKP
 		pipeLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 		pipeLayoutInfo.pPushConstantRanges = &vpRange;
 		pipeLayoutInfo.pushConstantRangeCount = 1;
-		pipeLayoutInfo.pSetLayouts = &m_DescSetLayout;
-		pipeLayoutInfo.setLayoutCount = 1;
+		// pipeLayoutInfo.pSetLayouts = &m_DescSetLayout;
+		// pipeLayoutInfo.setLayoutCount = 1;
 
 		if (vkCreatePipelineLayout(s_Device, &pipeLayoutInfo, nullptr, layout) != VK_SUCCESS)
 		{
@@ -1323,144 +1321,124 @@ namespace VKP
 		return true;
 	}
 
-	bool Context::CreateUniformBuffers()
-	{
-		m_UniformBuffers.reserve(MAX_CONCURRENT_FRAMES);
-
-		for (size_t i = 0; i < MAX_CONCURRENT_FRAMES; i++)
-		{
-			auto& b = m_UniformBuffers.emplace_back();
-
-			if (!CreateBuffer(b, sizeof(CameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
-			{
-				VKP_ERROR("Unable to create uniform buffer for in-flight frame {}", i);
-				return false;
-			}
-
-			m_DeletionQueue.Push([=]() { vmaDestroyBuffer(s_Allocator, b.BufferHandle, b.MemoryHandle); });
-		}
-
-		return true;
-	}
-
-	bool Context::CreateDescriptorSetLayout()
-	{
-		std::vector<VkDescriptorSetLayoutBinding> bindings(1);//(2);
+	// bool Context::CreateDescriptorSetLayout()
+	// {
+	// 	std::vector<VkDescriptorSetLayoutBinding> bindings(1);//(2);
 		
-		auto& binding = bindings[0];
-		binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		binding.descriptorCount = 1;
-		binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-		binding.binding = 0;
+	// 	auto& binding = bindings[0];
+	// 	binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	// 	binding.descriptorCount = 1;
+	// 	binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	// 	binding.binding = 0;
 
-		// auto& samplerBinding = bindings[1];
-		// samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		// samplerBinding.descriptorCount = 1;
-		// samplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-		// samplerBinding.binding = 1;
+	// 	// auto& samplerBinding = bindings[1];
+	// 	// samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	// 	// samplerBinding.descriptorCount = 1;
+	// 	// samplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	// 	// samplerBinding.binding = 1;
 
-		VkDescriptorSetLayoutCreateInfo layoutInfo = {};
-		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-		layoutInfo.pBindings = bindings.data();
-		layoutInfo.bindingCount = bindings.size();
+	// 	VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+	// 	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	// 	layoutInfo.pBindings = bindings.data();
+	// 	layoutInfo.bindingCount = bindings.size();
 
-		if (vkCreateDescriptorSetLayout(s_Device, &layoutInfo, nullptr, &m_DescSetLayout) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to create descriptor set layout");
-			return false;
-		}
+	// 	if (vkCreateDescriptorSetLayout(s_Device, &layoutInfo, nullptr, &m_DescSetLayout) != VK_SUCCESS)
+	// 	{
+	// 		VKP_ERROR("Unable to create descriptor set layout");
+	// 		return false;
+	// 	}
 
-		m_DeletionQueue.Push([=]() { vkDestroyDescriptorSetLayout(s_Device, m_DescSetLayout, nullptr); });
+	// 	m_DeletionQueue.Push([=]() { vkDestroyDescriptorSetLayout(s_Device, m_DescSetLayout, nullptr); });
 
-		return true;
-	}
+	// 	return true;
+	// }
 
-	bool Context::CreateDescriptorPool()
-	{
-		std::vector<VkDescriptorPoolSize> sizes(1);//(2);
+	// bool Context::CreateDescriptorPool()
+	// {
+	// 	std::vector<VkDescriptorPoolSize> sizes(1);//(2);
 		
-		auto& size = sizes[0];
-		size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		size.descriptorCount = MAX_CONCURRENT_FRAMES; // 2 descriptors, 1 x concurrent frame
+	// 	auto& size = sizes[0];
+	// 	size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	// 	size.descriptorCount = MAX_CONCURRENT_FRAMES; // 2 descriptors, 1 x concurrent frame
 
-		// auto& samplerSize = sizes[1];
-		// samplerSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		// samplerSize.descriptorCount = MAX_CONCURRENT_FRAMES;
+	// 	// auto& samplerSize = sizes[1];
+	// 	// samplerSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	// 	// samplerSize.descriptorCount = MAX_CONCURRENT_FRAMES;
 
-		VkDescriptorPoolCreateInfo poolInfo = {};
-		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-		poolInfo.pPoolSizes = sizes.data();
-		poolInfo.poolSizeCount = sizes.size();
-		poolInfo.maxSets = MAX_CONCURRENT_FRAMES; // 1 set x concurrent frame
+	// 	VkDescriptorPoolCreateInfo poolInfo = {};
+	// 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	// 	poolInfo.pPoolSizes = sizes.data();
+	// 	poolInfo.poolSizeCount = sizes.size();
+	// 	poolInfo.maxSets = MAX_CONCURRENT_FRAMES; // 1 set x concurrent frame
 
-		if (vkCreateDescriptorPool(s_Device, &poolInfo, nullptr, &m_DescPool) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to create descriptor pool");
-			return false;
-		}
+	// 	if (vkCreateDescriptorPool(s_Device, &poolInfo, nullptr, &m_DescPool) != VK_SUCCESS)
+	// 	{
+	// 		VKP_ERROR("Unable to create descriptor pool");
+	// 		return false;
+	// 	}
 
-		m_DeletionQueue.Push([=]() { vkDestroyDescriptorPool(s_Device, m_DescPool, nullptr); });
+	// 	m_DeletionQueue.Push([=]() { vkDestroyDescriptorPool(s_Device, m_DescPool, nullptr); });
 
-		return true;
-	}
+	// 	return true;
+	// }
 
-	bool Context::AllocateDescriptorSets()
-	{
-		const std::vector<VkDescriptorSetLayout> layouts(MAX_CONCURRENT_FRAMES, m_DescSetLayout);
+	// bool Context::AllocateDescriptorSets()
+	// {
+	// 	const std::vector<VkDescriptorSetLayout> layouts(MAX_CONCURRENT_FRAMES, m_DescSetLayout);
 
-		VkDescriptorSetAllocateInfo setInfo = {};
-		setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		setInfo.descriptorPool = m_DescPool;
-		setInfo.descriptorSetCount = MAX_CONCURRENT_FRAMES;
-		setInfo.pSetLayouts = layouts.data();
+	// 	VkDescriptorSetAllocateInfo setInfo = {};
+	// 	setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	// 	setInfo.descriptorPool = m_DescPool;
+	// 	setInfo.descriptorSetCount = MAX_CONCURRENT_FRAMES;
+	// 	setInfo.pSetLayouts = layouts.data();
 
-		m_DescSets.resize(MAX_CONCURRENT_FRAMES);
+	// 	m_DescSets.resize(MAX_CONCURRENT_FRAMES);
 
-		if (vkAllocateDescriptorSets(s_Device, &setInfo, m_DescSets.data()) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to allocate descriptor sets");
-			return false;
-		}
+	// 	if (vkAllocateDescriptorSets(s_Device, &setInfo, m_DescSets.data()) != VK_SUCCESS)
+	// 	{
+	// 		VKP_ERROR("Unable to allocate descriptor sets");
+	// 		return false;
+	// 	}
 
-		for (size_t i = 0; i < MAX_CONCURRENT_FRAMES; i++)
-		{
-			const auto& b = m_UniformBuffers[i];
+	// 	for (size_t i = 0; i < MAX_CONCURRENT_FRAMES; i++)
+	// 	{
+	// 		const auto& b = m_UniformBuffers[i];
 
-			VkDescriptorBufferInfo bufInfo = {};
-			bufInfo.buffer = b.BufferHandle;
-			bufInfo.offset = 0;
-			bufInfo.range = VK_WHOLE_SIZE;
+	// 		VkDescriptorBufferInfo bufInfo = {};
+	// 		bufInfo.buffer = b.BufferHandle;
+	// 		bufInfo.offset = 0;
+	// 		bufInfo.range = VK_WHOLE_SIZE;
 
-			// VkDescriptorImageInfo imgInfo = {};
-			// imgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			// imgInfo.imageView = m_ObjTexture.ViewHandle;
-			// imgInfo.sampler = m_ObjTexture.SamplerHandle;
+	// 		// VkDescriptorImageInfo imgInfo = {};
+	// 		// imgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	// 		// imgInfo.imageView = m_ObjTexture.ViewHandle;
+	// 		// imgInfo.sampler = m_ObjTexture.SamplerHandle;
 
-			std::vector<VkWriteDescriptorSet> writeInfos(1);//(2);
+	// 		std::vector<VkWriteDescriptorSet> writeInfos(1);//(2);
 
-			auto& bufWriteInfo = writeInfos[0];
-			bufWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			bufWriteInfo.pBufferInfo = &bufInfo;
-			bufWriteInfo.dstSet = m_DescSets[i];
-			bufWriteInfo.dstBinding = 0;
-			bufWriteInfo.dstArrayElement = 0;
-			bufWriteInfo.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			bufWriteInfo.descriptorCount = 1;
+	// 		auto& bufWriteInfo = writeInfos[0];
+	// 		bufWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	// 		bufWriteInfo.pBufferInfo = &bufInfo;
+	// 		bufWriteInfo.dstSet = m_DescSets[i];
+	// 		bufWriteInfo.dstBinding = 0;
+	// 		bufWriteInfo.dstArrayElement = 0;
+	// 		bufWriteInfo.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	// 		bufWriteInfo.descriptorCount = 1;
 
-			// auto& imgWriteInfo = writeInfos[1];
-			// imgWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			// imgWriteInfo.pImageInfo = &imgInfo;
-			// imgWriteInfo.dstSet = m_DescSets[i];
-			// imgWriteInfo.dstBinding = 1;
-			// imgWriteInfo.dstArrayElement = 0;
-			// imgWriteInfo.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			// imgWriteInfo.descriptorCount = 1;
+	// 		// auto& imgWriteInfo = writeInfos[1];
+	// 		// imgWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	// 		// imgWriteInfo.pImageInfo = &imgInfo;
+	// 		// imgWriteInfo.dstSet = m_DescSets[i];
+	// 		// imgWriteInfo.dstBinding = 1;
+	// 		// imgWriteInfo.dstArrayElement = 0;
+	// 		// imgWriteInfo.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	// 		// imgWriteInfo.descriptorCount = 1;
 
-			vkUpdateDescriptorSets(s_Device, writeInfos.size(), writeInfos.data(), 0, nullptr);
-		}
+	// 		vkUpdateDescriptorSets(s_Device, writeInfos.size(), writeInfos.data(), 0, nullptr);
+	// 	}
 
-		return true;
-	}
+	// 	return true;
+	// }
 
 	bool Context::CreateCommandPool()
 	{
@@ -1644,12 +1622,15 @@ namespace VKP
 			mats.View = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 			mats.VP = mats.Projection * mats.View;
 
-			const auto& ubo = m_UniformBuffers[m_CurrentFrame];
-			void* data = nullptr;
+			uint8_t* data = nullptr;
+			const uint32_t uboOffset = m_UBO.AlignedSize * m_CurrentFrame;
 
-			vmaMapMemory(s_Allocator, ubo.MemoryHandle, &data);
+			vmaMapMemory(s_Allocator, m_UBO.MemoryHandle, (void**)&data);
+
+			data += uboOffset;
 			memcpy(data, &mats, sizeof(CameraData));
-			vmaUnmapMemory(s_Allocator, ubo.MemoryHandle);
+
+			vmaUnmapMemory(s_Allocator, m_UBO.MemoryHandle);
 
 			for (const auto& r : m_Renderables)
 			{
@@ -1658,7 +1639,7 @@ namespace VKP
 					pipeline = r->Mat->Pipe;
 
 					vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-					vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->Mat->PipeLayout, 0, 1, &m_DescSets[m_CurrentFrame], 0, nullptr);
+					// vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->Mat->PipeLayout, 0, 1, &m_DescSets[m_CurrentFrame], 0, nullptr);
 					vkCmdPushConstants(buffer, r->Mat->PipeLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstantData), &m_PushData);
 				}
 

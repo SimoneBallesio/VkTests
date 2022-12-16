@@ -66,7 +66,11 @@ namespace VKP
 	class DescriptorSetCache final
 	{
 	public:
+		DescriptorSetCache(VkDevice device, DescriptorSetLayoutCache* cache, DescriptorSetAllocator* alloc)
+			: m_Device(device), m_LayoutCache(cache), m_Allocator(alloc) {}
+
 		DescriptorSetCache(DescriptorSetCache&) = delete;
+
 		~DescriptorSetCache() = default;
 
 		DescriptorSetCache& BindBuffer(uint32_t binding, VkDescriptorBufferInfo* bufInfo, VkDescriptorType type, VkShaderStageFlags flags);
@@ -76,8 +80,6 @@ namespace VKP
 
 		DescriptorSetCache& operator=(DescriptorSetCache&) = delete;
 
-		static DescriptorSetCache* Create(VkDevice device, DescriptorSetLayoutCache* cache, DescriptorSetAllocator* alloc);
-
 	private:
 		VkDevice m_Device;
 
@@ -86,9 +88,6 @@ namespace VKP
 
 		DescriptorList m_Bindings = {};
 		std::vector<VkWriteDescriptorSet> m_Writes = {};
-
-		DescriptorSetCache(VkDevice device, DescriptorSetLayoutCache* cache, DescriptorSetAllocator* alloc)
-			: m_Device(device), m_LayoutCache(cache), m_Allocator(alloc) {}
 	};
 
 }
