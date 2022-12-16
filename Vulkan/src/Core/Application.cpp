@@ -4,6 +4,7 @@
 #include "Core/Window.hpp"
 
 #include "Rendering/Context.hpp"
+#include "Rendering/Shader.hpp"
 
 namespace VKP
 {
@@ -23,8 +24,20 @@ namespace VKP
 
 	void Application::Init()
 	{
-		m_Model.Mat = Material::Create("assets/shaders/base");
-		m_Model.Model = Mesh::Create("assets/models/viking_room.obj");
+		// m_Model.Mat = Material::Create("assets/shaders/base");
+		// m_Model.Model = Mesh::Create("assets/models/viking_room.obj");
+
+		auto cache = ShaderModuleCache::Create(Context::GetDevice());
+
+		auto baseVert = cache->Create("assets/shaders/base.vert.spv");
+		auto baseFrag = cache->Create("assets/shaders/base.frag.spv");
+
+		ShaderEffect effect = {};
+		effect.AddStage(baseVert, VK_SHADER_STAGE_VERTEX_BIT);
+		effect.AddStage(baseFrag, VK_SHADER_STAGE_FRAGMENT_BIT);
+		effect.Reflect(Context::GetDevice());
+
+		ShaderModuleCache::Destroy();
 	}
 
 	void Application::Run()

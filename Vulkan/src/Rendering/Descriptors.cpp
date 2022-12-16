@@ -7,6 +7,9 @@
 namespace VKP
 {
 
+	DescriptorSetLayoutCache* DescriptorSetLayoutCache::s_Instance = nullptr;
+	std::unordered_map<DescriptorList, VkDescriptorSetLayout, DescriptorListHash> DescriptorSetLayoutCache::s_ResourceMap = {};
+
 	size_t DescriptorList::Hash() const
 	{
 		size_t result = std::hash<size_t>()(Bindings.size());
@@ -50,8 +53,10 @@ namespace VKP
 
 	DescriptorSetLayoutCache::~DescriptorSetLayoutCache()
 	{
-		for (auto p : m_ResourceMap)
+		for (auto p : s_ResourceMap)
 			vkDestroyDescriptorSetLayout(m_Device, p.second, nullptr);
+
+		s_ResourceMap.clear();
 	}
 
 	VkDescriptorSetLayout DescriptorSetLayoutCache::Allocate(DescriptorList& list)
@@ -73,9 +78,9 @@ namespace VKP
 
 		if (!sorted) std::sort(list.Bindings.begin(), list.Bindings.end(), [](const auto& a, const auto& b) { return a.binding < b.binding; });
 
-		auto it = m_ResourceMap.find(list);
+		auto it = s_ResourceMap.find(list);
 
-		if (it != m_ResourceMap.end())
+		if (it != s_ResourceMap.end())
 			return (*it).second;
 
 		VkDescriptorSetLayoutCreateInfo createInfo = {};
@@ -88,14 +93,17 @@ namespace VKP
 		if (vkCreateDescriptorSetLayout(m_Device, &createInfo, nullptr, &layout) != VK_SUCCESS)
 			return VK_NULL_HANDLE;
 
-		m_ResourceMap[list] = layout;
+		s_ResourceMap[list] = layout;
 
 		return layout;
 	}
 
 	DescriptorSetLayoutCache* DescriptorSetLayoutCache::Create(VkDevice device)
 	{
-		return new DescriptorSetLayoutCache(device);
+		if (s_Instance == nullptr)
+			s_Instance = new DescriptorSetLayoutCache(device);
+
+		return s_Instance;
 	}
 
 	DescriptorSetAllocator::~DescriptorSetAllocator()

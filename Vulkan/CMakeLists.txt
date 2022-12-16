@@ -46,6 +46,11 @@ add_subdirectory(${VKP_LIBRARIES_ROOT}/spdlog)
 target_link_libraries(Vulkan PRIVATE spdlog)
 endif()
 
+#SPIRV-Reflect
+target_include_directories(Vulkan PRIVATE ${VKP_LIBRARIES_ROOT}/SPIRV-Reflect)
+add_subdirectory(${VKP_LIBRARIES_ROOT}/SPIRV-Reflect)
+target_link_libraries(Vulkan PRIVATE spirv-reflect-static)
+
 # shaderc
 # set(SHADERC_SKIP_INSTALL OFF CACHE BOOL "" FORCE)
 # set(SHADERC_SKIP_TESTS ON CACHE BOOL "" FORCE)

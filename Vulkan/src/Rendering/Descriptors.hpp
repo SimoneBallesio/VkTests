@@ -32,7 +32,8 @@ namespace VKP
 	private:
 		VkDevice m_Device;
 
-		std::unordered_map<DescriptorList, VkDescriptorSetLayout, DescriptorListHash> m_ResourceMap = {};
+		static DescriptorSetLayoutCache* s_Instance;
+		static std::unordered_map<DescriptorList, VkDescriptorSetLayout, DescriptorListHash> s_ResourceMap;
 
 		DescriptorSetLayoutCache(VkDevice device) : m_Device(device) {}
 	};
