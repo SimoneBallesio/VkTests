@@ -11,6 +11,7 @@ namespace VKP
 		std::string Path = "";
 		VkPipeline Pipe = VK_NULL_HANDLE;
 		VkPipelineLayout PipeLayout = VK_NULL_HANDLE;
+		VkDescriptorSet TextureSet = VK_NULL_HANDLE;
 
 		Material() = default;
 		~Material();

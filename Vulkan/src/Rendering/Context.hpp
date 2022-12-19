@@ -2,6 +2,7 @@
 
 #include "Rendering/Buffer.hpp"
 #include "Rendering/Descriptors.hpp"
+#include "Rendering/Shader.hpp"
 #include "Rendering/Texture.hpp"
 #include "Rendering/Material.hpp"
 #include "Rendering/VertexData.hpp"
@@ -78,7 +79,6 @@ namespace VKP
 		bool CreateUniformBuffer(Buffer& ubo, VkDeviceSize size);
 		void DestroyBuffer(Buffer& buffer);
 
-		bool CreatePipelineLayout(VkPipelineLayout* layout);
 		bool CreatePipeline(Material& material);
 		void DestroyMaterial(Material& material);
 
@@ -87,6 +87,9 @@ namespace VKP
 		bool CreateImageView(Texture& texture, VkFormat format, VkImageAspectFlags aspectFlags);
 		bool CreateImageSampler(Texture& texture);
 		void DestroyTexture(Texture& texture);
+
+		DescriptorSetAllocator* GetDescriptorSetAllocator() const;
+		VkRenderPass GetDefaultRenderPass() const;
 
 		bool SubmitTransfer(const std::function<void(VkCommandBuffer)>& fn);
 		void SubmitRenderable(Renderable* renderable);
@@ -146,6 +149,13 @@ namespace VKP
 
 		Buffer m_UBO = {};
 
+		DescriptorSetAllocator* m_DescSetAllocator = nullptr;
+		DescriptorSetAllocator* m_DynDescSetAllocator = nullptr;
+
+		DescriptorSetLayoutCache* m_DescSetLayoutCache = nullptr;
+		ShaderModuleCache* m_ShaderModuleCache = nullptr;
+		PipelineLayoutCache* m_PipeLayoutCache = nullptr;
+
 		std::vector<VkSemaphore> m_CanAcquireImage; // Can get image from the swapchain for rendering
 		std::vector<VkSemaphore> m_CanPresentImage; // Render finished, can push image to the swapchain
 		std::vector<VkFence> m_PrevFrameRenderEnded; // GPU operations on the previous frame are finished
@@ -185,6 +195,9 @@ namespace VKP
 		bool AllocateCommandBuffer();
 
 		bool CreateSyncObjects();
+
+		bool CreateCaches();
+		bool CreateDescriptorSetAllocators();
 
 		bool RecordCommandBuffer(VkCommandBuffer buffer, size_t imageId);
 

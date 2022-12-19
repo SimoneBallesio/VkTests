@@ -18,9 +18,6 @@
 
 #define MAX_CONCURRENT_FRAMES 2
 
-#define OBJ_TEXTURE_PATH "assets/models/viking_room.png"
-#define OBJ_MODEL_PATH "assets/models/viking_room.obj"
-
 namespace VKP
 {
 
@@ -95,6 +92,8 @@ namespace VKP
 		if (success) success = AllocateCommandBuffer();
 		if (success) success = CreateSyncObjects();
 		if (success) success = CreateUniformBuffer(m_UBO, sizeof(CameraData));
+		if (success) success = CreateCaches();
+		if (success) success = CreateDescriptorSetAllocators();
 
 		if (success) m_Renderables.reserve(1000);
 
@@ -225,29 +224,6 @@ namespace VKP
 
 		if (buffer.BufferHandle != VK_NULL_HANDLE)
 			vmaDestroyBuffer(s_Allocator, buffer.BufferHandle, buffer.MemoryHandle);
-	}
-
-	bool Context::CreatePipelineLayout(VkPipelineLayout* layout)
-	{
-		VkPushConstantRange vpRange = {};
-		vpRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-		vpRange.size = sizeof(PushConstantData);
-		vpRange.offset = 0;
-
-		VkPipelineLayoutCreateInfo pipeLayoutInfo = {};
-		pipeLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		pipeLayoutInfo.pPushConstantRanges = &vpRange;
-		pipeLayoutInfo.pushConstantRangeCount = 1;
-		// pipeLayoutInfo.pSetLayouts = &m_DescSetLayout;
-		// pipeLayoutInfo.setLayoutCount = 1;
-
-		if (vkCreatePipelineLayout(s_Device, &pipeLayoutInfo, nullptr, layout) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to create default pipeline layout");
-			return false;
-		}
-
-		return true;
 	}
 
 	bool Context::CreatePipeline(Material& material)
@@ -603,6 +579,16 @@ namespace VKP
 
 		if (texture.ImageHandle != VK_NULL_HANDLE)
 			vmaDestroyImage(s_Allocator, texture.ImageHandle, texture.MemoryHandle);
+	}
+
+	DescriptorSetAllocator* Context::GetDescriptorSetAllocator() const
+	{
+		return m_DescSetAllocator;
+	}
+
+	VkRenderPass Context::GetDefaultRenderPass() const
+	{
+		return m_DefaultRenderPass;
 	}
 
 	bool Context::SubmitTransfer(const std::function<void(VkCommandBuffer)>& fn)
@@ -1321,67 +1307,6 @@ namespace VKP
 		return true;
 	}
 
-	// bool Context::CreateDescriptorSetLayout()
-	// {
-	// 	std::vector<VkDescriptorSetLayoutBinding> bindings(1);//(2);
-		
-	// 	auto& binding = bindings[0];
-	// 	binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	// 	binding.descriptorCount = 1;
-	// 	binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-	// 	binding.binding = 0;
-
-	// 	// auto& samplerBinding = bindings[1];
-	// 	// samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	// 	// samplerBinding.descriptorCount = 1;
-	// 	// samplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-	// 	// samplerBinding.binding = 1;
-
-	// 	VkDescriptorSetLayoutCreateInfo layoutInfo = {};
-	// 	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	// 	layoutInfo.pBindings = bindings.data();
-	// 	layoutInfo.bindingCount = bindings.size();
-
-	// 	if (vkCreateDescriptorSetLayout(s_Device, &layoutInfo, nullptr, &m_DescSetLayout) != VK_SUCCESS)
-	// 	{
-	// 		VKP_ERROR("Unable to create descriptor set layout");
-	// 		return false;
-	// 	}
-
-	// 	m_DeletionQueue.Push([=]() { vkDestroyDescriptorSetLayout(s_Device, m_DescSetLayout, nullptr); });
-
-	// 	return true;
-	// }
-
-	// bool Context::CreateDescriptorPool()
-	// {
-	// 	std::vector<VkDescriptorPoolSize> sizes(1);//(2);
-		
-	// 	auto& size = sizes[0];
-	// 	size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	// 	size.descriptorCount = MAX_CONCURRENT_FRAMES; // 2 descriptors, 1 x concurrent frame
-
-	// 	// auto& samplerSize = sizes[1];
-	// 	// samplerSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	// 	// samplerSize.descriptorCount = MAX_CONCURRENT_FRAMES;
-
-	// 	VkDescriptorPoolCreateInfo poolInfo = {};
-	// 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	// 	poolInfo.pPoolSizes = sizes.data();
-	// 	poolInfo.poolSizeCount = sizes.size();
-	// 	poolInfo.maxSets = MAX_CONCURRENT_FRAMES; // 1 set x concurrent frame
-
-	// 	if (vkCreateDescriptorPool(s_Device, &poolInfo, nullptr, &m_DescPool) != VK_SUCCESS)
-	// 	{
-	// 		VKP_ERROR("Unable to create descriptor pool");
-	// 		return false;
-	// 	}
-
-	// 	m_DeletionQueue.Push([=]() { vkDestroyDescriptorPool(s_Device, m_DescPool, nullptr); });
-
-	// 	return true;
-	// }
-
 	// bool Context::AllocateDescriptorSets()
 	// {
 	// 	const std::vector<VkDescriptorSetLayout> layouts(MAX_CONCURRENT_FRAMES, m_DescSetLayout);
@@ -1536,49 +1461,31 @@ namespace VKP
 		return true;
 	}
 
-	// bool Context::LoadObjTexture()
-	// {
-	// 	int w = 0, h = 0, nrChannels = 0;
-	// 	uint8_t* data = stbi_load(OBJ_TEXTURE_PATH, &w, &h, &nrChannels, STBI_rgb_alpha);
+	bool Context::CreateCaches()
+	{
+		m_DescSetLayoutCache = DescriptorSetLayoutCache::Create(s_Device);
+		m_ShaderModuleCache = ShaderModuleCache::Create(s_Device);
+		m_PipeLayoutCache = PipelineLayoutCache::Create(s_Device);
 
-	// 	if (data == nullptr)
-	// 	{
-	// 		VKP_ERROR("Unable to locate texture file");
-	// 		return false;
-	// 	}
+		m_DeletionQueue.Push([&]() {
+			delete m_DescSetLayoutCache;
+			delete m_ShaderModuleCache;
+			delete m_PipeLayoutCache;
+		});
 
-	// 	Buffer staging = {};
+		return true;
+	}
 
-	// 	if (!CreateBuffer(staging, w * h * 4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
-	// 	{
-	// 		VKP_ERROR("Unable to create staging buffer for texture upload");
-	// 		stbi_image_free(data);
-	// 		return false;
-	// 	}
+	bool Context::CreateDescriptorSetAllocators()
+	{
+		m_DynDescSetAllocator = DescriptorSetAllocator::Create(s_Device);
+		m_DescSetAllocator = DescriptorSetAllocator::Create(s_Device);
 
-	// 	void* bufData = nullptr;
-	// 	vmaMapMemory(s_Allocator, staging.MemoryHandle, &bufData);
-	// 	memcpy(bufData, data, w * h * 4);
-	// 	vmaUnmapMemory(s_Allocator, staging.MemoryHandle);
-
-	// 	stbi_image_free(data);
-
-	// 	if (!CreateImage(m_ObjTexture, w, h, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT))
-	// 	{
-	// 		VKP_ERROR("Unable to create image object");
-	// 		vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
-	// 		return false;
-	// 	}
-
-	// 	bool success = PopulateImage(m_ObjTexture, staging, w, h);
-
-	// 	vmaDestroyBuffer(s_Allocator, staging.BufferHandle, staging.MemoryHandle);
-
-	// 	if (success) success = CreateImageView(m_ObjTexture, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
-	// 	if (success) success = CreateImageSampler(m_ObjTexture);
-
-	// 	return success;
-	// }
+		m_DeletionQueue.Push([&]() {
+			delete m_DynDescSetAllocator;
+			delete m_DescSetAllocator;
+		});
+	}
 
 	bool Context::RecordCommandBuffer(VkCommandBuffer buffer, size_t imageId)
 	{
