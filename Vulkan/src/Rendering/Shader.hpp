@@ -41,29 +41,29 @@ namespace VKP
 		ShaderModuleCache(VkDevice device): m_Device(device) {}
 	};
 
-	// class PipelineLayoutCache final
-	// {
-	// public:
-	// 	PipelineLayoutCache(PipelineLayoutCache&) = delete;
-	// 	~PipelineLayoutCache();
+	class PipelineLayoutCache final
+	{
+	public:
+		PipelineLayoutCache(PipelineLayoutCache&) = delete;
+		~PipelineLayoutCache();
 
-	// 	VkPipelineLayout Create(const VkPipelineLayoutCreateInfo& info);
+		VkPipelineLayout Create(const VkPipelineLayoutCreateInfo& info);
 
-	// 	PipelineLayoutCache& operator=(PipelineLayoutCache&) = delete;
+		PipelineLayoutCache& operator=(PipelineLayoutCache&) = delete;
 
-	// 	static PipelineLayoutCache* Create(VkDevice device);
-	// 	static void Destroy();
+		static PipelineLayoutCache* Create(VkDevice device);
+		static void Destroy();
 
-	// private:
-	// 	VkDevice m_Device;
+	private:
+		VkDevice m_Device;
 
-	// 	static PipelineLayoutCache* s_Instance;
-	// 	static std::unordered_map<size_t, VkPipelineLayout> s_ResourceMap;
+		static PipelineLayoutCache* s_Instance;
+		static std::unordered_map<size_t, VkPipelineLayout> s_ResourceMap;
 
-	// 	PipelineLayoutCache(VkDevice device) : m_Device(device) {}
+		PipelineLayoutCache(VkDevice device) : m_Device(device) {}
 
-	// 	size_t Hash(const VkPipelineLayoutCreateInfo& info) const;
-	// };
+		size_t Hash(const VkPipelineLayoutCreateInfo& info) const;
+	};
 
 	class ShaderEffect final
 	{
@@ -72,13 +72,16 @@ namespace VKP
 		ShaderEffect(ShaderEffect&) = delete;
 
 		void AddStage(ShaderModule* module, VkShaderStageFlagBits stage);
-		void Reflect(VkDevice device);
+		void Reflect(DescriptorSetLayoutCache* setLayoutCache, PipelineLayoutCache* pipeLayoutCache);
 
 		~ShaderEffect() = default;
 
 	private:
 		std::vector<ShaderStage> m_Stages = {};
-		std::vector<DescriptorList> m_DescriptorList = {};
+		std::vector<DescriptorList> m_DescriptorLists = {};
+
+		std::vector<VkDescriptorSetLayout> m_DescriptorSetLayouts = {};
+		VkPipelineLayout m_PipeLayout = VK_NULL_HANDLE;
 	};
 
 }

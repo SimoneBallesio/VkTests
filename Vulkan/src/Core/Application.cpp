@@ -27,16 +27,28 @@ namespace VKP
 		// m_Model.Mat = Material::Create("assets/shaders/base");
 		// m_Model.Model = Mesh::Create("assets/models/viking_room.obj");
 
-		auto cache = ShaderModuleCache::Create(Context::GetDevice());
+		auto shaderCache = ShaderModuleCache::Create(Context::GetDevice());
+		auto descSetLayoutCache = DescriptorSetLayoutCache::Create(Context::GetDevice());
+		auto pipeLayoutCache = PipelineLayoutCache::Create(Context::GetDevice());
 
-		auto baseVert = cache->Create("assets/shaders/base.vert.spv");
-		auto baseFrag = cache->Create("assets/shaders/base.frag.spv");
+		auto baseVert = shaderCache->Create("assets/shaders/base.vert.spv");
+		auto baseFrag = shaderCache->Create("assets/shaders/base.frag.spv");
+
+		auto baseVert1 = shaderCache->Create("assets/shaders/base.vert.spv");
+		auto baseFrag1 = shaderCache->Create("assets/shaders/base.frag.spv");
 
 		ShaderEffect effect = {};
 		effect.AddStage(baseVert, VK_SHADER_STAGE_VERTEX_BIT);
 		effect.AddStage(baseFrag, VK_SHADER_STAGE_FRAGMENT_BIT);
-		effect.Reflect(Context::GetDevice());
+		effect.Reflect(descSetLayoutCache, pipeLayoutCache);
 
+		ShaderEffect cached = {};
+		cached.AddStage(baseVert1, VK_SHADER_STAGE_VERTEX_BIT);
+		cached.AddStage(baseFrag1, VK_SHADER_STAGE_FRAGMENT_BIT);
+		cached.Reflect(descSetLayoutCache, pipeLayoutCache);
+
+		PipelineLayoutCache::Destroy();
+		DescriptorSetLayoutCache::Destroy();
 		ShaderModuleCache::Destroy();
 	}
 

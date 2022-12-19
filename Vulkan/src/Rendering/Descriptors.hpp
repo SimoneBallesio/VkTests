@@ -28,6 +28,7 @@ namespace VKP
 		DescriptorSetLayoutCache& operator=(DescriptorSetLayoutCache&) = delete;
 
 		static DescriptorSetLayoutCache* Create(VkDevice device);
+		static void Destroy();
 
 	private:
 		VkDevice m_Device;

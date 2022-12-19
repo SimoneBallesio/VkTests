@@ -106,6 +106,13 @@ namespace VKP
 		return s_Instance;
 	}
 
+	void DescriptorSetLayoutCache::Destroy()
+	{
+		if (s_Instance == nullptr) return;
+		delete s_Instance;
+		s_Instance = nullptr;
+	}
+
 	DescriptorSetAllocator::~DescriptorSetAllocator()
 	{
 		for (auto p : m_UsedPools)
