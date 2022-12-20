@@ -79,9 +79,6 @@ namespace VKP
 		bool CreateUniformBuffer(Buffer& ubo, VkDeviceSize size);
 		void DestroyBuffer(Buffer& buffer);
 
-		bool CreatePipeline(Material& material);
-		void DestroyMaterial(Material& material);
-
 		bool CreateImage(Texture& texture, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT);
 		bool PopulateImage(Texture& texture, Buffer& staging, uint32_t width, uint32_t height);
 		bool CreateImageView(Texture& texture, VkFormat format, VkImageAspectFlags aspectFlags);
@@ -99,6 +96,7 @@ namespace VKP
 		void OnResize(uint32_t width, uint32_t height);
 
 		void GetTransferQueueData(VkSharingMode* mode, uint32_t* numQueues, const uint32_t** queuesPtr);
+		VkSampleCountFlagBits GetMsaaMaxSamples() const;
 
 		Context& operator=(Context&) = delete;
 
@@ -150,11 +148,15 @@ namespace VKP
 		Buffer m_UBO = {};
 
 		DescriptorSetAllocator* m_DescSetAllocator = nullptr;
-		DescriptorSetAllocator* m_DynDescSetAllocator = nullptr;
+		std::vector<DescriptorSetAllocator*> m_DynDescSetAllocators = {};
+
+		VkDescriptorSet m_SceneDataSet = VK_NULL_HANDLE;
+		uint32_t m_SceneDataOffset = 0;
 
 		DescriptorSetLayoutCache* m_DescSetLayoutCache = nullptr;
 		ShaderModuleCache* m_ShaderModuleCache = nullptr;
 		PipelineLayoutCache* m_PipeLayoutCache = nullptr;
+		MaterialCache* m_MaterialCache = nullptr;
 
 		std::vector<VkSemaphore> m_CanAcquireImage; // Can get image from the swapchain for rendering
 		std::vector<VkSemaphore> m_CanPresentImage; // Render finished, can push image to the swapchain

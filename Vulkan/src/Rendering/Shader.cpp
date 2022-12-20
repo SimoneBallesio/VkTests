@@ -88,6 +88,11 @@ namespace VKP
 		s_Instance = nullptr;
 	}
 
+	ShaderModuleCache& ShaderModuleCache::Get()
+	{
+		return *s_Instance;
+	}
+
 	PipelineLayoutCache::~PipelineLayoutCache()
 	{
 		for (auto it : s_ResourceMap)
@@ -129,6 +134,11 @@ namespace VKP
 		if (s_Instance == nullptr) return;
 		delete s_Instance;
 		s_Instance = nullptr;
+	}
+
+	PipelineLayoutCache& PipelineLayoutCache::Get()
+	{
+		return *s_Instance;
 	}
 
 	size_t PipelineLayoutCache::Hash(const VkPipelineLayoutCreateInfo& info) const
@@ -202,6 +212,9 @@ namespace VKP
 					binding.descriptorType = static_cast<VkDescriptorType>(b.descriptor_type);
 					binding.descriptorCount = 1;
 					binding.stageFlags = static_cast<VkShaderStageFlagBits>(module.shader_stage);
+
+					if (strcmp(b.name, "UBO") == 0)
+						binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 
 					for (size_t n = 0; n < b.array.dims_count; n++)
 						binding.descriptorCount *= b.array.dims[n];

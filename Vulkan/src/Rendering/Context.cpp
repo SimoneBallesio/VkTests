@@ -215,6 +215,11 @@ namespace VKP
 			return false;
 		}
 
+		ubo.Size = size;
+		ubo.AlignedSize = alignedSize;
+
+		m_DeletionQueue.Push([&]() { DestroyBuffer(ubo); });
+
 		return true;
 	}
 
@@ -224,165 +229,6 @@ namespace VKP
 
 		if (buffer.BufferHandle != VK_NULL_HANDLE)
 			vmaDestroyBuffer(s_Allocator, buffer.BufferHandle, buffer.MemoryHandle);
-	}
-
-	bool Context::CreatePipeline(Material& material)
-	{
-		std::string moduleNames[] = {
-			material.Path + ".vert.spv",
-			material.Path + ".frag.spv",
-		};
-
-		const VkShaderStageFlagBits moduleStages[] = {
-			VK_SHADER_STAGE_VERTEX_BIT,
-			VK_SHADER_STAGE_FRAGMENT_BIT,
-		};
-
-		std::vector<VkShaderModuleCreateInfo> moduleInfos(2);
-		std::vector<VkShaderModule> modules(2);
-
-		std::vector<VkPipelineShaderStageCreateInfo> stageInfos(2);
-
-		for (size_t i = 0; i < 2; i++)
-		{
-			std::ifstream file(moduleNames[i], std::ios::ate | std::ios::binary);
-
-			if (!file.is_open())
-			{
-				VKP_ERROR("Unable to locate shader module file: {}", moduleNames[i]);
-				return false;
-			}
-
-			const size_t size = file.tellg();
-			std::vector<char> fileBuffer(size);
-
-			file.seekg(0);
-			file.read(fileBuffer.data(), size);
-
-			file.close();
-
-			auto& moduleInfo = moduleInfos[i];
-			moduleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-			moduleInfo.pCode = reinterpret_cast<uint32_t*>(fileBuffer.data());
-			moduleInfo.codeSize = size;
-
-			if (vkCreateShaderModule(s_Device, &moduleInfo, nullptr, &modules[i]) != VK_SUCCESS)
-			{
-				VKP_ERROR("Unable to create shader module: {}", moduleNames[i]);
-				return false;
-			}
-
-			auto& stageInfo = stageInfos[i];
-			stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-			stageInfo.module = modules[i];
-			stageInfo.pName = "main";
-			stageInfo.stage = moduleStages[i];
-		}
-
-		std::vector<VkDynamicState> dynamicStates = {
-			VK_DYNAMIC_STATE_VIEWPORT,
-			VK_DYNAMIC_STATE_SCISSOR,
-		};
-
-		VkPipelineDynamicStateCreateInfo dynInfo = {};
-		dynInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-		dynInfo.pDynamicStates = dynamicStates.data();
-		dynInfo.dynamicStateCount = dynamicStates.size();
-
-		std::vector<VkVertexInputBindingDescription> vertBind = {};
-		std::vector<VkVertexInputAttributeDescription> descriptions = {};
-
-		Vertex::PopulateBindingDescription(vertBind, descriptions);
-
-		VkPipelineVertexInputStateCreateInfo vertInfo = {};
-		vertInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-		vertInfo.pVertexBindingDescriptions = vertBind.data();
-		vertInfo.vertexBindingDescriptionCount = vertBind.size();
-		vertInfo.vertexAttributeDescriptionCount = descriptions.size();
-		vertInfo.pVertexAttributeDescriptions = descriptions.data();
-
-		VkPipelineInputAssemblyStateCreateInfo inputInfo = {};
-		inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-		inputInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-		inputInfo.primitiveRestartEnable = VK_FALSE;
-
-		VkPipelineViewportStateCreateInfo viewportInfo = {};
-		viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-		viewportInfo.viewportCount = 1;
-		viewportInfo.scissorCount = 1;
-
-		VkPipelineRasterizationStateCreateInfo rasterInfo = {};
-		rasterInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-		rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
-		rasterInfo.cullMode = VK_CULL_MODE_BACK_BIT;
-		rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-		rasterInfo.rasterizerDiscardEnable = VK_FALSE;
-		rasterInfo.depthBiasEnable = VK_FALSE;
-		rasterInfo.lineWidth = 1.0f;
-
-		VkPipelineMultisampleStateCreateInfo sampleInfo = {};
-		sampleInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-		sampleInfo.rasterizationSamples = m_SwapchainData.NumSamples;
-
-		VkPipelineColorBlendAttachmentState blendState = {};
-		blendState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-		blendState.blendEnable = VK_FALSE;
-
-		VkPipelineColorBlendStateCreateInfo blendInfo = {};
-		blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-		blendInfo.logicOpEnable = VK_FALSE;
-		blendInfo.pAttachments = &blendState;
-		blendInfo.attachmentCount = 1;
-
-		VkPipelineDepthStencilStateCreateInfo depthInfo = {};
-		depthInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-		depthInfo.depthTestEnable = VK_TRUE;
-		depthInfo.depthWriteEnable = VK_TRUE;
-		depthInfo.depthCompareOp = VK_COMPARE_OP_LESS;
-		depthInfo.depthBoundsTestEnable = VK_FALSE;
-		depthInfo.stencilTestEnable = VK_FALSE;
-
-		VkGraphicsPipelineCreateInfo pipeInfo = {};
-		pipeInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-		pipeInfo.pStages = stageInfos.data();
-		pipeInfo.stageCount = stageInfos.size();
-		pipeInfo.renderPass = m_DefaultRenderPass;
-		pipeInfo.subpass = 0;
-		pipeInfo.layout = material.PipeLayout;
-		pipeInfo.pDynamicState = &dynInfo;
-		pipeInfo.pVertexInputState = &vertInfo;
-		pipeInfo.pInputAssemblyState = &inputInfo;
-		pipeInfo.pViewportState = &viewportInfo;
-		pipeInfo.pRasterizationState = &rasterInfo;
-		pipeInfo.pMultisampleState = &sampleInfo;
-		pipeInfo.pColorBlendState = &blendInfo;
-		pipeInfo.pDepthStencilState = &depthInfo;
-
-		if (vkCreateGraphicsPipelines(s_Device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &material.Pipe) != VK_SUCCESS)
-		{
-			VKP_ERROR("Unable to create default pipeline");
-
-			for (auto& m : modules)
-				vkDestroyShaderModule(s_Device, m, nullptr);
-
-			return false;
-		}
-
-		for (auto& m : modules)
-			vkDestroyShaderModule(s_Device, m, nullptr);
-
-		return true;
-	}
-
-	void Context::DestroyMaterial(Material& material)
-	{
-		vkDeviceWaitIdle(s_Device);
-
-		if (material.PipeLayout != VK_NULL_HANDLE)
-			vkDestroyPipelineLayout(s_Device, material.PipeLayout, nullptr);
-
-		if (material.Pipe != VK_NULL_HANDLE)
-			vkDestroyPipeline(s_Device, material.Pipe, nullptr);
 	}
 
 	bool Context::CreateImage(Texture& texture, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkSampleCountFlagBits samples)
@@ -680,8 +526,19 @@ namespace VKP
 
 		vkResetFences(s_Device, 1, &m_PrevFrameRenderEnded[m_CurrentFrame]);
 
-		vkResetCommandBuffer(m_CmdBuffer[m_CurrentFrame], 0);
+		m_DynDescSetAllocators[m_CurrentFrame]->Reset();
 
+		VkDescriptorBufferInfo info = {};
+		info.buffer = m_UBO.BufferHandle;
+		info.offset = 0;
+		info.range = m_UBO.Size;
+
+		DescriptorSetFactory builder(s_Device, m_DescSetLayoutCache, m_DynDescSetAllocators[m_CurrentFrame]);
+		builder.BindBuffer(0, &info, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+		builder.Build(m_SceneDataSet);
+		m_SceneDataOffset = m_CurrentFrame * m_UBO.AlignedSize;
+
+		vkResetCommandBuffer(m_CmdBuffer[m_CurrentFrame], 0);
 		RecordCommandBuffer(m_CmdBuffer[m_CurrentFrame], imageId);
 
 		const VkPipelineStageFlags stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
@@ -745,6 +602,11 @@ namespace VKP
 		*mode = VK_SHARING_MODE_CONCURRENT;
 		*numQueues = m_QueueIndices.ConcurrentQueues.size();
 		*queuesPtr = m_QueueIndices.ConcurrentQueues.data();
+	}
+
+	VkSampleCountFlagBits Context::GetMsaaMaxSamples() const
+	{
+		return m_SwapchainData.NumSamples;
 	}
 
 	Context* Context::Create()
@@ -1466,8 +1328,10 @@ namespace VKP
 		m_DescSetLayoutCache = DescriptorSetLayoutCache::Create(s_Device);
 		m_ShaderModuleCache = ShaderModuleCache::Create(s_Device);
 		m_PipeLayoutCache = PipelineLayoutCache::Create(s_Device);
+		m_MaterialCache = MaterialCache::Create(s_Device);
 
 		m_DeletionQueue.Push([&]() {
+			delete m_MaterialCache;
 			delete m_DescSetLayoutCache;
 			delete m_ShaderModuleCache;
 			delete m_PipeLayoutCache;
@@ -1478,13 +1342,21 @@ namespace VKP
 
 	bool Context::CreateDescriptorSetAllocators()
 	{
-		m_DynDescSetAllocator = DescriptorSetAllocator::Create(s_Device);
 		m_DescSetAllocator = DescriptorSetAllocator::Create(s_Device);
 
+		m_DynDescSetAllocators.reserve(MAX_CONCURRENT_FRAMES);
+
+		for (size_t i = 0; i < MAX_CONCURRENT_FRAMES; i++)
+			m_DynDescSetAllocators.push_back(DescriptorSetAllocator::Create(s_Device));
+
 		m_DeletionQueue.Push([&]() {
-			delete m_DynDescSetAllocator;
+			for (auto a : m_DynDescSetAllocators)
+				delete a;
+
 			delete m_DescSetAllocator;
 		});
+
+		return true;
 	}
 
 	bool Context::RecordCommandBuffer(VkCommandBuffer buffer, size_t imageId)
@@ -1521,6 +1393,7 @@ namespace VKP
 		if (m_Renderables.size() > 0)
 		{
 			VkPipeline pipeline = VK_NULL_HANDLE;
+			VkDescriptorSet textureSet = VK_NULL_HANDLE;
 			VkDeviceSize offset = 0;
 
 			CameraData mats = {};
@@ -1541,13 +1414,19 @@ namespace VKP
 
 			for (const auto& r : m_Renderables)
 			{
-				if (pipeline != r->Mat->Pipe)
+				if (pipeline != r->Mat->Template->Pipe)
 				{
-					pipeline = r->Mat->Pipe;
+					pipeline = r->Mat->Template->Pipe;
 
 					vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-					// vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->Mat->PipeLayout, 0, 1, &m_DescSets[m_CurrentFrame], 0, nullptr);
-					vkCmdPushConstants(buffer, r->Mat->PipeLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstantData), &m_PushData);
+					vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->Mat->Template->PipeLayout, 0, 1, &m_SceneDataSet, 1, &m_SceneDataOffset);
+					vkCmdPushConstants(buffer, r->Mat->Template->PipeLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstantData), &m_PushData);
+				}
+
+				if (textureSet != r->Mat->TextureSet)
+				{
+					textureSet = r->Mat->TextureSet;
+					vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->Mat->Template->PipeLayout, 1, 1, &textureSet, 0, nullptr);
 				}
 
 				vkCmdBindVertexBuffers(buffer, 0, 1, &r->Model->VBO.BufferHandle, &offset);

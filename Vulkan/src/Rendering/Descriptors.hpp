@@ -30,6 +30,8 @@ namespace VKP
 		static DescriptorSetLayoutCache* Create(VkDevice device);
 		static void Destroy();
 
+		static DescriptorSetLayoutCache& Get();
+
 	private:
 		VkDevice m_Device;
 
@@ -65,22 +67,22 @@ namespace VKP
 		VkDescriptorPool GetOrAllocatePool();
 	};
 
-	class DescriptorSetCache final
+	class DescriptorSetFactory final
 	{
 	public:
-		DescriptorSetCache(VkDevice device, DescriptorSetLayoutCache* cache, DescriptorSetAllocator* alloc)
+		DescriptorSetFactory(VkDevice device, DescriptorSetLayoutCache* cache, DescriptorSetAllocator* alloc)
 			: m_Device(device), m_LayoutCache(cache), m_Allocator(alloc) {}
 
-		DescriptorSetCache(DescriptorSetCache&) = delete;
+		DescriptorSetFactory(DescriptorSetFactory&) = delete;
 
-		~DescriptorSetCache() = default;
+		~DescriptorSetFactory() = default;
 
-		DescriptorSetCache& BindBuffer(uint32_t binding, VkDescriptorBufferInfo* bufInfo, VkDescriptorType type, VkShaderStageFlags flags);
-		DescriptorSetCache& BindImage(uint32_t binding, VkDescriptorImageInfo* imgInfo, VkDescriptorType type, VkShaderStageFlags flags);
+		DescriptorSetFactory& BindBuffer(uint32_t binding, VkDescriptorBufferInfo* bufInfo, VkDescriptorType type, VkShaderStageFlags flags);
+		DescriptorSetFactory& BindImage(uint32_t binding, VkDescriptorImageInfo* imgInfo, VkDescriptorType type, VkShaderStageFlags flags);
 
 		bool Build(VkDescriptorSet& set);
 
-		DescriptorSetCache& operator=(DescriptorSetCache&) = delete;
+		DescriptorSetFactory& operator=(DescriptorSetFactory&) = delete;
 
 	private:
 		VkDevice m_Device;

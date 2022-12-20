@@ -32,13 +32,15 @@ namespace VKP
 		static ShaderModuleCache* Create(VkDevice device);
 		static void Destroy();
 
+		static ShaderModuleCache& Get();
+
 	private:
 		VkDevice m_Device;
 
 		static ShaderModuleCache* s_Instance;
 		static std::unordered_map<std::string, ShaderModule*> s_ResourceMap;
 
-		ShaderModuleCache(VkDevice device): m_Device(device) {}
+		ShaderModuleCache(VkDevice device) : m_Device(device) {}
 	};
 
 	class PipelineLayoutCache final
@@ -54,6 +56,8 @@ namespace VKP
 		static PipelineLayoutCache* Create(VkDevice device);
 		static void Destroy();
 
+		static PipelineLayoutCache& Get();
+
 	private:
 		VkDevice m_Device;
 
@@ -67,6 +71,9 @@ namespace VKP
 
 	class ShaderEffect final
 	{
+		friend class MaterialCache;
+		friend struct GraphicsPipelineFactory;
+
 	public:
 		ShaderEffect() = default;
 		ShaderEffect(ShaderEffect&) = delete;

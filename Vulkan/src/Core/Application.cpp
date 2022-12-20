@@ -11,45 +11,23 @@ namespace VKP
 
 	Application::~Application()
 	{
-		if (m_Model.Mat != nullptr)
-			delete m_Model.Mat;
-
 		if (m_Model.Model != nullptr)
 			delete m_Model.Model;
 
+		if (m_Diffuse != nullptr)
+			Context::Get().DestroyTexture(*m_Diffuse);
+
 		delete m_Context;
 		delete m_Window;
+
 		s_Instance = nullptr;
 	}
 
 	void Application::Init()
 	{
-		// m_Model.Mat = Material::Create("assets/shaders/base");
-		// m_Model.Model = Mesh::Create("assets/models/viking_room.obj");
-
-		auto shaderCache = ShaderModuleCache::Create(Context::GetDevice());
-		auto descSetLayoutCache = DescriptorSetLayoutCache::Create(Context::GetDevice());
-		auto pipeLayoutCache = PipelineLayoutCache::Create(Context::GetDevice());
-
-		auto baseVert = shaderCache->Create("assets/shaders/base.vert.spv");
-		auto baseFrag = shaderCache->Create("assets/shaders/base.frag.spv");
-
-		auto baseVert1 = shaderCache->Create("assets/shaders/base.vert.spv");
-		auto baseFrag1 = shaderCache->Create("assets/shaders/base.frag.spv");
-
-		ShaderEffect effect = {};
-		effect.AddStage(baseVert, VK_SHADER_STAGE_VERTEX_BIT);
-		effect.AddStage(baseFrag, VK_SHADER_STAGE_FRAGMENT_BIT);
-		effect.Reflect(descSetLayoutCache, pipeLayoutCache);
-
-		ShaderEffect cached = {};
-		cached.AddStage(baseVert1, VK_SHADER_STAGE_VERTEX_BIT);
-		cached.AddStage(baseFrag1, VK_SHADER_STAGE_FRAGMENT_BIT);
-		cached.Reflect(descSetLayoutCache, pipeLayoutCache);
-
-		PipelineLayoutCache::Destroy();
-		DescriptorSetLayoutCache::Destroy();
-		ShaderModuleCache::Destroy();
+		m_Diffuse = Texture::Load("assets/models/viking_room.png");
+		m_Model.Model = Mesh::Create("assets/models/viking_room.obj");
+		m_Model.Mat = MaterialCache::Get().Create("default", { m_Diffuse });
 	}
 
 	void Application::Run()

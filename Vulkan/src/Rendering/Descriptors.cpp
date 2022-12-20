@@ -113,6 +113,11 @@ namespace VKP
 		s_Instance = nullptr;
 	}
 
+	DescriptorSetLayoutCache& DescriptorSetLayoutCache::Get()
+	{
+		return *s_Instance;
+	}
+
 	DescriptorSetAllocator::~DescriptorSetAllocator()
 	{
 		for (auto p : m_UsedPools)
@@ -220,7 +225,7 @@ namespace VKP
 		return pool;
 	}
 
-	DescriptorSetCache& DescriptorSetCache::BindBuffer(uint32_t binding, VkDescriptorBufferInfo* bufInfo, VkDescriptorType type, VkShaderStageFlags flags)
+	DescriptorSetFactory& DescriptorSetFactory::BindBuffer(uint32_t binding, VkDescriptorBufferInfo* bufInfo, VkDescriptorType type, VkShaderStageFlags flags)
 	{
 		auto& bind = m_Bindings.Bindings.emplace_back();
 		bind.binding = binding;
@@ -238,7 +243,7 @@ namespace VKP
 		return *this;
 	}
 
-	DescriptorSetCache& DescriptorSetCache::BindImage(uint32_t binding, VkDescriptorImageInfo* imgInfo, VkDescriptorType type, VkShaderStageFlags flags)
+	DescriptorSetFactory& DescriptorSetFactory::BindImage(uint32_t binding, VkDescriptorImageInfo* imgInfo, VkDescriptorType type, VkShaderStageFlags flags)
 	{
 		auto& bind = m_Bindings.Bindings.emplace_back();
 		bind.binding = binding;
@@ -256,7 +261,7 @@ namespace VKP
 		return *this;
 	}
 
-	bool DescriptorSetCache::Build(VkDescriptorSet& set)
+	bool DescriptorSetFactory::Build(VkDescriptorSet& set)
 	{
 		VkDescriptorSetLayout layout = m_LayoutCache->Allocate(m_Bindings);
 

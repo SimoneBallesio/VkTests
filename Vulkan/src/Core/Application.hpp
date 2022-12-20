@@ -33,6 +33,7 @@ namespace VKP
 		Window* m_Window = nullptr;
 
 		Renderable m_Model = {};
+		Texture* m_Diffuse = nullptr;
 
 		bool m_Running = true;
 

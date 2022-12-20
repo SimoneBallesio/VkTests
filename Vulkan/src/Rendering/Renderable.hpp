@@ -6,7 +6,7 @@ namespace VKP
 {
 
 	class Mesh;
-	class Material;
+	struct Material;
 
 	struct Renderable
 	{
