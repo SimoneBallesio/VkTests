@@ -14,8 +14,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include <fstream>
-
 #define MAX_CONCURRENT_FRAMES 2
 
 namespace VKP
@@ -25,17 +23,6 @@ namespace VKP
 	{
 		if (minAlignment == 0) return size;
 		return (size + minAlignment - 1) & ~(minAlignment - 1);
-	}
-
-	void DeletionQueue::Push(std::function<void()>&& fn)
-	{
-		Queue.push_back(fn);
-	}
-
-	void DeletionQueue::Flush()
-	{
-		for (auto it = Queue.rbegin(); it != Queue.rend(); it++) (*it)();
-		Queue.clear();
 	}
 
 	bool QueueIndices::AreValid() const

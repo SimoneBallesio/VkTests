@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/FunctionQueue.hpp"
+
 #include "Rendering/Buffer.hpp"
 #include "Rendering/Descriptors.hpp"
 #include "Rendering/Shader.hpp"
@@ -10,18 +12,8 @@
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 
-#include <deque>
-
 namespace VKP
 {
-
-	struct DeletionQueue
-	{
-		std::deque<std::function<void()>> Queue;
-
-		void Push(std::function<void()>&& fn);
-		void Flush();
-	};
 
 	struct QueueIndices
 	{
@@ -107,7 +99,7 @@ namespace VKP
 		static inline VmaAllocator GetMemoryAllocator() { return s_Allocator; }
 
 	private:
-		DeletionQueue m_DeletionQueue = {};
+		FunctionQueue m_DeletionQueue = {};
 
 		VkInstance m_Instance = VK_NULL_HANDLE;
 		VkPhysicalDevice m_PhysDevice = VK_NULL_HANDLE;
