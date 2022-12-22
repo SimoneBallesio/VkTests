@@ -6,6 +6,7 @@
 #include "Rendering/Texture.hpp"
 #include "Rendering/Shader.hpp"
 #include "Rendering/Material.hpp"
+#include "Rendering/Profiler.hpp"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
@@ -67,7 +68,11 @@ namespace VKP::Impl
 		VkPhysicalDeviceProperties PhysDeviceProperties = {};
 
 #ifdef VKP_DEBUG
+
 		VkDebugUtilsMessengerEXT Debug = VK_NULL_HANDLE;
+		VulkanProfiler* Profiler = nullptr;
+		VulkanScopeTimer* FrameTimer = nullptr;
+
 #endif
 
 		VkDevice Device = VK_NULL_HANDLE;

@@ -109,10 +109,26 @@ namespace VKP
 		}
 
 		Impl::State::Data->CurrentCmdBuffer = Impl::State::Data->Frames[Impl::State::Data->CurrentFrame].CmdBuffer;
+
+
+#ifdef VKP_DEBUG
+
+		Impl::State::Data->Profiler->ParseQueries(Impl::State::Data->CurrentCmdBuffer);
+		Impl::State::Data->FrameTimer = new VulkanScopeTimer(Impl::State::Data->CurrentCmdBuffer, Impl::State::Data->Profiler, "Frame");
+
+#endif
+
 	}
 
 	void Context::EndFrame()
 	{
+
+#ifdef VKP_DEBUG
+
+		delete Impl::State::Data->FrameTimer;
+
+#endif
+
 		if (vkEndCommandBuffer(Impl::State::Data->CurrentCmdBuffer) != VK_SUCCESS)
 		{
 			VKP_ERROR("Unable to end command buffer");
@@ -718,7 +734,19 @@ namespace VKP::Impl
 		s->ShaderModules = ShaderModuleCache::Create(s->Device);
 		s->PipeLayouts = PipelineLayoutCache::Create(s->Device);
 
+#ifdef VKP_DEBUG
+
+		s->Profiler = new VulkanProfiler();
+		s->Profiler->Init(s->Device, s->PhysDeviceProperties.limits.timestampPeriod);
+
+#endif
+
 		s->DeletionQueue.Push([=]() {
+
+#ifdef VKP_DEBUG
+			delete s->Profiler;
+#endif
+
 			delete s->DescriptorSetLayouts;
 			delete s->ShaderModules;
 			delete s->PipeLayouts;
