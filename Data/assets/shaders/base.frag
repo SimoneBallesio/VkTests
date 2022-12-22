@@ -9,8 +9,6 @@ in vs_out
 
 layout (set = 0, binding = 0) uniform ubo
 {
-	mat4 Projection;
-	mat4 View;
 	mat4 VP;
 } UBO;
 

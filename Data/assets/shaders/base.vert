@@ -6,15 +6,8 @@ layout (location = 2) in vec2 aTexCoord;
 
 layout (set = 0, binding = 0) uniform ubo
 {
-	mat4 Projection;
-	mat4 View;
 	mat4 VP;
 } UBO;
-
-layout (push_constant) uniform constants
-{
-	mat4 Model;
-} PushConstants;
 
 layout (location = 0)
 out vs_out
@@ -25,7 +18,7 @@ out vs_out
 
 void main()
 {
-	gl_Position = UBO.VP * PushConstants.Model * vec4(aPosition, 1.0);
+	gl_Position = UBO.VP * vec4(aPosition, 1.0);
 	Out.TexCoord = aTexCoord;
 	Out.Color = aColor;
 }

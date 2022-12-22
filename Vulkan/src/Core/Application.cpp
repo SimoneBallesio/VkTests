@@ -5,17 +5,19 @@
 
 #include "Rendering/Context.hpp"
 #include "Rendering/Shader.hpp"
+#include "Rendering/Renderer.hpp"
 
 namespace VKP
 {
 
 	Application::~Application()
 	{
-		if (m_Model.Model != nullptr)
+		Impl::State::Data->DeletionQueue.Push([&]() {
+			if (m_Model.Model != nullptr)
 			delete m_Model.Model;
 
-		if (m_Diffuse != nullptr)
-			Context::Get().DestroyTexture(*m_Diffuse);
+			Renderer3D::Destroy();
+		});
 
 		delete m_Context;
 		delete m_Window;
@@ -25,7 +27,7 @@ namespace VKP
 
 	void Application::Init()
 	{
-		m_Diffuse = Texture::Load("assets/models/viking_room.png");
+		m_Diffuse = TextureCache::Get().Create("assets/models/viking_room.png");
 		m_Model.Model = Mesh::Create("assets/models/viking_room.obj");
 		m_Model.Mat = MaterialCache::Get().Create("default", { m_Diffuse });
 	}
@@ -38,6 +40,7 @@ namespace VKP
 		bool valid = m_Context->BeforeWindowCreation();
 		if (valid) valid = m_Window->Init();
 		if (valid) valid = m_Context->AfterWindowCreation();
+		if (valid) valid = Renderer3D::Init();
 
 		if (!valid) return;
 
@@ -46,14 +49,18 @@ namespace VKP
 		while (m_Running)
 		{
 			Draw();
-			m_Context->SwapBuffers();
 			m_Window->PollEvents();
 		}
 	}
 
 	void Application::Draw()
 	{
-		Context::Get().SubmitRenderable(&m_Model);
+		m_Context->BeginFrame();
+
+		Renderer3D::SubmitRenderable(&m_Model);
+		Renderer3D::Flush(&m_Camera);
+
+		m_Context->EndFrame();
 	}
 
 	void Application::Stop()

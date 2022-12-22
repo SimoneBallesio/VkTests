@@ -2,9 +2,10 @@
 
 #include "Core/Definitions.hpp"
 
-#include "Rendering/Context.hpp"
+#include "Rendering/Buffer.hpp"
 #include "Rendering/Mesh.hpp"
 #include "Rendering/VertexData.hpp"
+#include "Rendering/State.hpp"
 
 #include <tiny_obj_loader.h>
 
@@ -15,8 +16,8 @@ namespace VKP
 
 	Mesh::~Mesh()
 	{
-		Context::Get().DestroyBuffer(VBO);
-		Context::Get().DestroyBuffer(IBO);
+		Impl::DestroyBuffer(Impl::State::Data, &VBO);
+		Impl::DestroyBuffer(Impl::State::Data, &IBO);
 
 		s_ResourceMap.erase(Path);
 	}
@@ -74,8 +75,8 @@ namespace VKP
 		auto mesh = new Mesh();
 		mesh->Path = name;
 
-		bool success = Context::Get().CreateVertexBuffer(mesh->VBO, vertices);
-		if (success) success = Context::Get().CreateIndexBuffer(mesh->IBO, indices);
+		bool success = Impl::CreateVertexBuffer(Impl::State::Data, &mesh->VBO, vertices);
+		if (success) success = Impl::CreateIndexBuffer(Impl::State::Data, &mesh->IBO, indices);
 		if (success) mesh->NumIndices = indices.size();
 
 		else

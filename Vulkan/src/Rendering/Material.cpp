@@ -5,6 +5,7 @@
 #include "Rendering/Context.hpp"
 #include "Rendering/Material.hpp"
 #include "Rendering/Shader.hpp"
+#include "Rendering/Renderer.hpp"
 
 namespace VKP
 {
@@ -27,7 +28,7 @@ namespace VKP
 		effect.Reflect(&descSetLayoutCache, &pipeLayoutCache);
 
 		GraphicsPipelineFactory f = {};
-		m_DefaultTemplate.Pipe = f.Build(Context::Get().GetDefaultRenderPass(), &effect);
+		m_DefaultTemplate.Pipe = f.Build(Renderer3D::GetDefaultRenderPass(), & effect);
 		m_DefaultTemplate.PipeLayout = effect.m_PipeLayout;
 
 		VKP_ASSERT(m_DefaultTemplate.Pipe != VK_NULL_HANDLE, "Fatal: Unable to create default pipeline");
@@ -54,7 +55,7 @@ namespace VKP
 		mat->Path = std::move(name);
 		mat->Template = &m_DefaultTemplate;
 
-		DescriptorSetFactory builder = DescriptorSetFactory(m_Device, &DescriptorSetLayoutCache::Get(), Context::Get().GetDescriptorSetAllocator());
+		DescriptorSetFactory builder = DescriptorSetFactory(m_Device, &DescriptorSetLayoutCache::Get(), Impl::State::Data->DescriptorSetAlloc);
 
 		for (size_t i = 0; i < textures.size(); i++)
 		{

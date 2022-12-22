@@ -3,6 +3,7 @@
 #include "Rendering/Renderable.hpp"
 #include "Rendering/Material.hpp"
 #include "Rendering/Mesh.hpp"
+#include "Rendering/Camera.hpp"
 
 namespace VKP
 {
@@ -31,6 +32,8 @@ namespace VKP
 	private:
 		Context* m_Context = nullptr;
 		Window* m_Window = nullptr;
+
+		Camera m_Camera = {};
 
 		Renderable m_Model = {};
 		Texture* m_Diffuse = nullptr;

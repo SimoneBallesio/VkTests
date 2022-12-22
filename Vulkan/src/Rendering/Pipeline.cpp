@@ -2,9 +2,9 @@
 
 #include "Core/Definitions.hpp"
 
-#include "Rendering/Context.hpp"
 #include "Rendering/Pipeline.hpp"
 #include "Rendering/VertexData.hpp"
+#include "Rendering/State.hpp"
 
 namespace VKP
 {
@@ -80,7 +80,7 @@ namespace VKP
 
 		VkPipelineMultisampleStateCreateInfo sampleInfo = {};
 		sampleInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-		sampleInfo.rasterizationSamples = Context::Get().GetMsaaMaxSamples();
+		sampleInfo.rasterizationSamples = Impl::GetMsaaMaxSamples(Impl::State::Data->PhysDeviceProperties);
 
 		VkPipelineColorBlendStateCreateInfo blendInfo = {};
 		blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -106,7 +106,7 @@ namespace VKP
 
 		VkPipeline pipe = VK_NULL_HANDLE;
 
-		if (vkCreateGraphicsPipelines(Context::GetDevice(), VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &pipe) != VK_SUCCESS)
+		if (vkCreateGraphicsPipelines(Impl::State::Data->Device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &pipe) != VK_SUCCESS)
 		{
 			VKP_ERROR("Unable to create pipeline");
 			return VK_NULL_HANDLE;
