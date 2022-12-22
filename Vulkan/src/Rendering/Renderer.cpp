@@ -133,7 +133,7 @@ namespace VKP
 			VkDeviceSize offset = 0;
 
 			const float aspect = (float)Impl::State::Data->SurfaceWidth / (float)Impl::State::Data->SurfaceHeight;
-			const glm::mat4 proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 100.0f);
+			const glm::mat4 proj = glm::perspective(glm::radians(70.0f), aspect, 0.1f, 100.0f);
 			const glm::mat4 vp = proj * camera->ViewMatrix();
 
 			uint8_t* data = nullptr;

@@ -1,10 +1,8 @@
 #include "Pch.hpp"
 
-#ifdef VKP_DEBUG
-
-#include "Core/Definitions.hpp"
-
 #include "Rendering/Profiler.hpp"
+
+#if defined(VKP_DEBUG) && !defined(VKP_PLATFORM_APPLE)
 
 namespace VKP
 {

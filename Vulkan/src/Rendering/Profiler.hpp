@@ -1,6 +1,8 @@
 #pragma once
 
-#ifdef VKP_DEBUG
+#include "Core/Definitions.hpp"
+
+#if defined(VKP_DEBUG) && !defined(VKP_PLATFORM_APPLE)
 
 #include <vulkan/vulkan.h>
 

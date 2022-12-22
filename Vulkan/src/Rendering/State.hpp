@@ -67,11 +67,16 @@ namespace VKP::Impl
 		VkPhysicalDevice PhysDevice = VK_NULL_HANDLE;
 		VkPhysicalDeviceProperties PhysDeviceProperties = {};
 
-#ifdef VKP_DEBUG
+#if defined(VKP_DEBUG)
 
 		VkDebugUtilsMessengerEXT Debug = VK_NULL_HANDLE;
+
+#if !defined(VKP_PLATFORM_APPLE)
+
 		VulkanProfiler* Profiler = nullptr;
 		VulkanScopeTimer* FrameTimer = nullptr;
+
+#endif
 
 #endif
 

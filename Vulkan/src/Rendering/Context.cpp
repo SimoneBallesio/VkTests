@@ -111,7 +111,7 @@ namespace VKP
 		Impl::State::Data->CurrentCmdBuffer = Impl::State::Data->Frames[Impl::State::Data->CurrentFrame].CmdBuffer;
 
 
-#ifdef VKP_DEBUG
+#if defined(VKP_DEBUG) && !defined(VKP_PLATFORM_APPLE)
 
 		Impl::State::Data->Profiler->ParseQueries(Impl::State::Data->CurrentCmdBuffer);
 		Impl::State::Data->FrameTimer = new VulkanScopeTimer(Impl::State::Data->CurrentCmdBuffer, Impl::State::Data->Profiler, "Frame");
@@ -123,7 +123,7 @@ namespace VKP
 	void Context::EndFrame()
 	{
 
-#ifdef VKP_DEBUG
+#if defined(VKP_DEBUG) && !defined(VKP_PLATFORM_APPLE)
 
 		delete Impl::State::Data->FrameTimer;
 
@@ -437,6 +437,12 @@ namespace VKP::Impl
 		VkPhysicalDeviceFeatures features = {};
 		memset(&features, 0, sizeof(VkPhysicalDeviceFeatures));
 
+#if defined(VKP_DEBUG) && !defined(VKP_PLATFORM_APPLE)
+
+		features.pipelineStatisticsQuery = VK_TRUE;
+
+#endif
+
 		VkDeviceCreateInfo deviceInfo = {};
 		deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 		deviceInfo.pQueueCreateInfos = queueInfos.data();
@@ -734,7 +740,7 @@ namespace VKP::Impl
 		s->ShaderModules = ShaderModuleCache::Create(s->Device);
 		s->PipeLayouts = PipelineLayoutCache::Create(s->Device);
 
-#ifdef VKP_DEBUG
+#if defined(VKP_DEBUG) && !defined(VKP_PLATFORM_APPLE)
 
 		s->Profiler = new VulkanProfiler();
 		s->Profiler->Init(s->Device, s->PhysDeviceProperties.limits.timestampPeriod);
@@ -743,7 +749,7 @@ namespace VKP::Impl
 
 		s->DeletionQueue.Push([=]() {
 
-#ifdef VKP_DEBUG
+#if defined(VKP_DEBUG) && !defined(VKP_PLATFORM_APPLE)
 			delete s->Profiler;
 #endif
 
