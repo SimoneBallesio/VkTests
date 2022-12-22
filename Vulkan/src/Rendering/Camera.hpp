@@ -8,13 +8,13 @@ namespace VKP
 
 	struct Camera
 	{
-		glm::vec3 Position = glm::vec3(0.0f, 0.0f, -3.0f);
-		float Pitch = 0.0f;
-		float Yaw = 0.0f;
+		glm::vec3 Position = glm::vec3(0.0f, 1.7f, 5.0f);
+		glm::quat Orientation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 
-		glm::mat4 VP;
+		glm::vec3 Forward() const;
+		glm::vec3 Right() const;
+		glm::vec3 Up() const;
 
-		glm::quat Orientation() const;
 		glm::mat4 ViewMatrix() const;
 	};
 

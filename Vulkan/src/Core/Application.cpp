@@ -1,5 +1,6 @@
 #include "Pch.hpp"
 
+#include "Core/Definitions.hpp"
 #include "Core/Application.hpp"
 #include "Core/Window.hpp"
 
@@ -55,6 +56,11 @@ namespace VKP
 
 	void Application::Draw()
 	{
+		if (m_Forward) m_Camera.Position += m_Camera.Forward() * 0.02f;
+		if (m_Backward) m_Camera.Position -= m_Camera.Forward() * 0.02f;
+		if (m_Right) m_Camera.Position += m_Camera.Right() * 0.02f;
+		if (m_Left) m_Camera.Position -= m_Camera.Right() * 0.02f;
+
 		m_Context->BeginFrame();
 
 		Renderer3D::SubmitRenderable(&m_Model);
@@ -66,6 +72,71 @@ namespace VKP
 	void Application::Stop()
 	{
 		m_Running = false;
+	}
+
+	void Application::OnMouseDown()
+	{
+		m_MouseDown = true;
+	}
+
+	void Application::OnMouseUp()
+	{
+		m_MouseDown = false;
+	}
+
+	void Application::OnMouseMove(double x, double y)
+	{
+		if (!m_MouseDown) return;
+		if (x == 0.0 && y == 0.0) return;
+
+		glm::quat pitch = glm::angleAxis((float)y * 0.005f, glm::vec3(1.0f, 0.0f, 0.0f));
+		glm::quat yaw = glm::angleAxis((float)x * 0.005f, glm::vec3(0.0f, 1.0f, 0.0f));
+
+		m_Camera.Orientation = yaw * m_Camera.Orientation * pitch;
+	}
+
+	void Application::OnKeyDown(SDL_Keycode key)
+	{
+		switch (key)
+		{
+			case SDLK_w:
+				m_Forward = true;
+				break;
+
+			case SDLK_s:
+				m_Backward = true;
+				break;
+
+			case SDLK_d:
+				m_Right = true;
+				break;
+
+			case SDLK_a:
+				m_Left = true;
+				break;
+		}
+	}
+
+	void Application::OnKeyUp(SDL_Keycode key)
+	{
+		switch (key)
+		{
+		case SDLK_w:
+			m_Forward = false;
+			break;
+
+		case SDLK_s:
+			m_Backward = false;
+			break;
+
+		case SDLK_d:
+			m_Right = false;
+			break;
+
+		case SDLK_a:
+			m_Left = false;
+			break;
+		}
 	}
 
 	Application* Application::Create()

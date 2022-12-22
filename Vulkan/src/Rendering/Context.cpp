@@ -57,10 +57,14 @@ namespace VKP
 		if (success) success = Impl::ChoosePhysicalDevice(Impl::State::Data);
 		if (success) success = Impl::CreateDevice(Impl::State::Data);
 		if (success) success = Impl::CreateMemoryAllocator(Impl::State::Data);
+
 		if (success) success = Impl::CreateSwapchain(Impl::State::Data);
 		if (success) success = Impl::CreateImageViews(Impl::State::Data);
 		if (success) success = Impl::CreateMsaaTexture(Impl::State::Data);
 		if (success) success = Impl::CreateDepthTexture(Impl::State::Data);
+
+		if (success) Impl::State::Data->DeletionQueue.Push([&]() { Impl::DestroySwapchain(Impl::State::Data); });
+
 		if (success) success = Impl::CreateCommandPools(Impl::State::Data);
 		if (success) success = Impl::AllocateCommandBuffers(Impl::State::Data);
 		if (success) success = Impl::CreateSyncObjects(Impl::State::Data);
@@ -462,11 +466,6 @@ namespace VKP::Impl
 		bool success = CreateImage(s, &s->SwcMsaaTexture, s->SwcData.CurrentExtent.width, s->SwcData.CurrentExtent.height, s->SwcData.Format.format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, s->SwcData.NumSamples);
 		if (success) success = CreateImageView(s, &s->SwcMsaaTexture, s->SwcData.Format.format, VK_IMAGE_ASPECT_COLOR_BIT);
 
-		s->DeletionQueue.Push([=]() {
-			vkDestroyImageView(s->Device, s->SwcMsaaTexture.ViewHandle, nullptr);
-		vmaDestroyImage(s->MemAllocator, s->SwcMsaaTexture.ImageHandle, s->SwcMsaaTexture.MemoryHandle);
-			});
-
 		return success;
 	}
 
@@ -474,11 +473,6 @@ namespace VKP::Impl
 	{
 		bool success = CreateImage(s, &s->SwcDepthTexture, s->SwcData.CurrentExtent.width, s->SwcData.CurrentExtent.height, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, s->SwcData.NumSamples);
 		if (success) success = CreateImageView(s, &s->SwcDepthTexture, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_IMAGE_ASPECT_DEPTH_BIT);
-
-		s->DeletionQueue.Push([=]() {
-			vkDestroyImageView(s->Device, s->SwcDepthTexture.ViewHandle, nullptr);
-		vmaDestroyImage(s->MemAllocator, s->SwcDepthTexture.ImageHandle, s->SwcDepthTexture.MemoryHandle);
-			});
 
 		return success;
 	}
@@ -535,8 +529,6 @@ namespace VKP::Impl
 
 		s->Scissor.extent = s->SwcData.CurrentExtent;
 		s->Scissor.offset = { 0, 0 };
-
-		s->DeletionQueue.Push([=]() { vkDestroySwapchainKHR(s->Device, s->Swapchain, nullptr); });
 
 		return true;
 	}
@@ -601,8 +593,6 @@ namespace VKP::Impl
 				VKP_ERROR("Unable to create Vulkan swapchain image view #{}", i);
 				return false;
 			}
-
-			s->DeletionQueue.Push([=]() { vkDestroyImageView(s->Device, t.ViewHandle, nullptr); });
 		}
 
 		return true;

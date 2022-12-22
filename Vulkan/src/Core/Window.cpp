@@ -93,6 +93,24 @@ namespace VKP
 					break;
 				}
 
+				case SDL_MOUSEBUTTONDOWN:
+				{
+					Application::Get().OnMouseDown();
+					break;
+				}
+
+				case SDL_MOUSEBUTTONUP:
+				{
+					Application::Get().OnMouseUp();
+					break;
+				}
+
+				case SDL_MOUSEMOTION:
+				{
+					Application::Get().OnMouseMove((double)e.motion.xrel, (double)e.motion.yrel);
+					break;
+				}
+
 				case SDL_KEYDOWN:
 				{
 					switch (e.key.keysym.sym)
@@ -100,7 +118,18 @@ namespace VKP
 						case SDLK_ESCAPE:
 							Application::Get().Stop();
 							return;
+
+						default:
+							Application::Get().OnKeyDown(e.key.keysym.sym);
+							break;
 					}
+					break;
+				}
+
+				case SDL_KEYUP:
+				{
+					Application::Get().OnKeyUp(e.key.keysym.sym);
+					break;
 				}
 			}
 		}
