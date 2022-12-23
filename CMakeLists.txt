@@ -16,4 +16,6 @@ if(WIN32)
 endif()
 
 # Projects
+add_subdirectory("${CMAKE_SOURCE_DIR}/AssetLibrary")
+add_subdirectory("${CMAKE_SOURCE_DIR}/AssetParser")
 add_subdirectory("${CMAKE_SOURCE_DIR}/Vulkan")

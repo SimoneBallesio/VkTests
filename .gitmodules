@@ -10,3 +10,9 @@
 [submodule "Vulkan/vendor/tinyobjloader"]
 	path = Vulkan/vendor/tinyobjloader
 	url = https://github.com/SimoneBallesio/tinyobjloader
+[submodule "AssetLibrary/vendor/json"]
+	path = AssetLibrary/vendor/json
+	url = https://github.com/nlohmann/json
+[submodule "AssetLibrary/vendor/lz4"]
+	path = AssetLibrary/vendor/lz4
+	url = https://github.com/lz4/lz4

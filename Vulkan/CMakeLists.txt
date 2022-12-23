@@ -8,8 +8,12 @@ file(GLOB_RECURSE STB_IMAGE_HEADERS vendor/stb_image/*.h)
 file(GLOB_RECURSE STB_IMAGE_SOURCES vendor/stb_image/*.cpp)
 
 add_executable(Vulkan ${VKP_HEADERS} ${VKP_SOURCES} ${STB_IMAGE_HEADERS} ${STB_IMAGE_SOURCES})
-target_precompile_headers(Vulkan PRIVATE ${CMAKE_SOURCE_DIR}/Vulkan/src/Pch.hpp)
+target_precompile_headers(Vulkan PRIVATE src/Pch.hpp)
 target_include_directories(Vulkan PRIVATE src)
+
+# Asset Library
+target_include_directories(Vulkan PRIVATE ${CMAKE_SOURCE_DIR}/AssetLibrary/include)
+target_link_libraries(Vulkan PRIVATE AssetLibrary)
 
 # Rendering back-end
 find_package(Vulkan REQUIRED)
