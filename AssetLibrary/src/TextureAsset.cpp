@@ -67,7 +67,7 @@ namespace Assets
 		file.Type[0] = 'T'; file.Type[1] = 'E';
 		file.Type[2] = 'X'; file.Type[3] = 'I';
 
-		file.Json = jsonString;
+		file.Json = std::move(jsonString);
 
 		int stagingSize = LZ4_compressBound(info->FileSize);
 		file.Binary.resize(stagingSize);

@@ -26,7 +26,6 @@ namespace Assets
 		nlohmann::json metadata = nlohmann::json::parse(file->Json);
 
 		info.Name = metadata["name"];
-		info.FileSize = metadata["filesize"];
 		info.VertexBufferSize = metadata["vbosize"];
 		info.IndexBufferSize = metadata["ibosize"];
 
@@ -43,6 +42,13 @@ namespace Assets
 	{
 		if (info->Compression == CompressionMode::LZ4)
 		{
+			std::vector<uint8_t> data(info->VertexBufferSize + info->IndexBufferSize);
+
+			LZ4_decompress_safe((const char*)src, (char*)data.data(), (int)srcSize, (int)data.size());
+
+			memcpy(dstVbo, data.data(), info->VertexBufferSize);
+			memcpy(dstIbo, data.data() + info->VertexBufferSize, info->IndexBufferSize);
+
 			return;
 		}
 
@@ -52,8 +58,35 @@ namespace Assets
 
 	Asset PackMesh(MeshAssetInfo* info, void* vbo, void* ibo)
 	{
-		Asset a;
-		return a;
+		nlohmann::json metadata;
+
+		metadata["compression"] = "LZ4";
+		metadata["format"] = "PosColNorUV";
+		metadata["name"] = info->Name;
+		metadata["vbosize"] = info->VertexBufferSize;
+		metadata["ibosize"] = info->IndexBufferSize;
+
+		const std::string jsonString = metadata.dump();
+
+		Asset file = {};
+
+		file.Type[0] = 'M'; file.Type[1] = 'E';
+		file.Type[2] = 'S'; file.Type[3] = 'H';
+
+		file.Json = std::move(jsonString);
+
+		std::vector<uint8_t> mergedBuffer(info->VertexBufferSize + info->IndexBufferSize);
+
+		memcpy(mergedBuffer.data(), vbo, info->VertexBufferSize);
+		memcpy(mergedBuffer.data() + info->VertexBufferSize, ibo, info->IndexBufferSize);
+
+		int stagingSize = LZ4_compressBound(mergedBuffer.size());
+		file.Binary.resize(stagingSize);
+
+		int compressedSize = LZ4_compress_default((const char*)mergedBuffer.data(), (char*)file.Binary.data(), mergedBuffer.size(), stagingSize);
+		file.Binary.resize(compressedSize);
+
+		return file;
 	}
 
 }

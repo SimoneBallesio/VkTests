@@ -36,7 +36,6 @@ namespace Assets
 		VertexFormat Format;
 		uint32_t VertexBufferSize = 0;
 		uint32_t IndexBufferSize = 0;
-		size_t FileSize = 0;
 	};
 
 	struct Asset;
