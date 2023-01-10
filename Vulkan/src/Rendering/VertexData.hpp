@@ -12,6 +12,7 @@ namespace VKP
 	{
 		glm::vec3 Position;
 		glm::vec3 Color;
+		glm::vec3 Normal;
 		glm::vec2 TexCoord;
 
 		Vertex() = default;
@@ -32,7 +33,7 @@ namespace std
 	{
 		size_t operator()(VKP::Vertex const& v) const
 		{
-			return ((hash<glm::vec3>()(v.Position) ^ (hash<glm::vec3>()(v.Color) << 1)) >> 1) ^ (hash<glm::vec2>()(v.TexCoord) << 1);
+			return (((hash<glm::vec3>()(v.Position) ^ (hash<glm::vec3>()(v.Color) << 1)) >> 1) ^ (hash<glm::vec2>()(v.TexCoord) << 1) ^ (hash<glm::vec3>()(v.Normal)));
 		}
 	};
 

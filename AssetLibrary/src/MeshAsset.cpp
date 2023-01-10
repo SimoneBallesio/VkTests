@@ -20,6 +20,21 @@ namespace Assets
 		return VertexFormat::None;
 	}
 
+	bool VertexPosColNorUV::operator==(const VertexPosColNorUV& v) const
+	{
+		return Position[0] == v.Position[0] && Position[1] == v.Position[1] && Position[2] == v.Position[2] &&
+			Color[0] == v.Color[0] && Color[1] == v.Color[1] && Color[2] == v.Color[2] &&
+			Normal[0] == v.Normal[0] && Normal[1] == v.Normal[1] && Normal[2] == v.Normal[2] &&
+			UV[0] == v.UV[0] && UV[1] == v.UV[1];
+	}
+
+	bool VertexPosNorUV::operator==(const VertexPosNorUV& v) const
+	{
+		return Position[0] == v.Position[0] && Position[1] == v.Position[1] && Position[2] == v.Position[2] &&
+			Normal[0] == v.Normal[0] && Normal[1] == v.Normal[1] && Normal[2] == v.Normal[2] &&
+			UV[0] == v.UV[0] && UV[1] == v.UV[1];
+	}
+
 	MeshAssetInfo ParseMeshAssetInfo(Asset* file)
 	{
 		MeshAssetInfo info = {};

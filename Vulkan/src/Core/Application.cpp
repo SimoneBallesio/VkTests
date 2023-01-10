@@ -28,8 +28,8 @@ namespace VKP
 
 	void Application::Init()
 	{
-		m_Diffuse = TextureCache::Get().Create("assets/models/viking_room.png");
-		m_Model.Model = Mesh::Create("assets/models/viking_room.obj");
+		m_Diffuse = TextureCache::Get().Create("assets/models/viking_room.texi");
+		m_Model.Model = Mesh::Create("assets/models/viking_room.mesh");
 		m_Model.Mat = MaterialCache::Get().Create("default", { m_Diffuse });
 	}
 

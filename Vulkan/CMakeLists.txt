@@ -4,10 +4,8 @@ set(VKP_LIBRARIES_ROOT "${CMAKE_SOURCE_DIR}/Vulkan/vendor")
 # Source files
 file(GLOB_RECURSE VKP_HEADERS src/*.hpp)
 file(GLOB_RECURSE VKP_SOURCES src/*.cpp)
-file(GLOB_RECURSE STB_IMAGE_HEADERS vendor/stb_image/*.h)
-file(GLOB_RECURSE STB_IMAGE_SOURCES vendor/stb_image/*.cpp)
 
-add_executable(Vulkan ${VKP_HEADERS} ${VKP_SOURCES} ${STB_IMAGE_HEADERS} ${STB_IMAGE_SOURCES})
+add_executable(Vulkan ${VKP_HEADERS} ${VKP_SOURCES})
 target_precompile_headers(Vulkan PRIVATE src/Pch.hpp)
 target_include_directories(Vulkan PRIVATE src)
 
@@ -24,14 +22,6 @@ target_include_directories(Vulkan PRIVATE ${Vulkan_INCLUDE_DIR})
 find_package(SDL2 REQUIRED)
 target_link_libraries(Vulkan PRIVATE ${SDL2_LIBRARIES})
 target_include_directories(Vulkan PRIVATE ${SDL2_INCLUDE_DIRS})
-
-# stb_image
-target_include_directories(Vulkan PRIVATE ${VKP_LIBRARIES_ROOT}/stb_image)
-
-# tinyobjloader
-add_subdirectory(${VKP_LIBRARIES_ROOT}/tinyobjloader)
-target_include_directories(Vulkan PRIVATE ${VKP_LIBRARIES_ROOT}/tinyobjloader)
-target_link_libraries(Vulkan PRIVATE tinyobjloader)
 
 # GLM
 set(GLM_TEST_ENABLE OFF CACHE BOOL "" FORCE)
@@ -50,7 +40,7 @@ add_subdirectory(${VKP_LIBRARIES_ROOT}/spdlog)
 target_link_libraries(Vulkan PRIVATE spdlog)
 endif()
 
-#SPIRV-Reflect
+# SPIRV-Reflect
 target_include_directories(Vulkan PRIVATE ${VKP_LIBRARIES_ROOT}/SPIRV-Reflect)
 add_subdirectory(${VKP_LIBRARIES_ROOT}/SPIRV-Reflect)
 target_link_libraries(Vulkan PRIVATE spirv-reflect-static)

@@ -7,7 +7,7 @@
 #include "Rendering/VertexData.hpp"
 #include "Rendering/State.hpp"
 
-#include <tiny_obj_loader.h>
+#include <AssetLibrary.hpp>
 
 namespace VKP
 {
@@ -29,51 +29,23 @@ namespace VKP
 		if (it != s_ResourceMap.end())
 			return it->second;
 
-		tinyobj::attrib_t attrib;
-		std::vector<tinyobj::shape_t> shapes;
-		std::vector<tinyobj::material_t> materials;
-		std::string warnings, errors;
+		Assets::Asset file;
 
-		if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warnings, &errors, name.c_str()))
+		if (!Assets::LoadBinary(name.c_str(), file))
 		{
 			VKP_ERROR("Unable to load OBJ model file {}", name);
 			return nullptr;
 		}
 
-		std::vector<Vertex> vertices;
-		std::vector<uint32_t> indices;
-		std::unordered_map<Vertex, uint32_t> uniqueVertices;
-
-		for (const auto& s : shapes)
-		{
-			for (const auto& i : s.mesh.indices)
-			{
-				Vertex v{};
-
-				v.Position = {
-					attrib.vertices[3 * i.vertex_index + 0],
-					attrib.vertices[3 * i.vertex_index + 1],
-					attrib.vertices[3 * i.vertex_index + 2]
-				};
-
-				v.TexCoord = {
-					attrib.texcoords[2 * i.texcoord_index + 0],
-					1.0f - attrib.texcoords[2 * i.texcoord_index + 1]
-				};
-
-				v.Color = { 1.0f, 1.0f, 1.0f };
-
-				if (uniqueVertices.count(v) == 0) {
-					uniqueVertices[v] = static_cast<uint32_t>(vertices.size());
-					vertices.push_back(v);
-				}
-
-				indices.push_back(uniqueVertices[v]);
-			}
-		}
-
 		auto mesh = new Mesh();
 		mesh->Path = name;
+
+		auto info = Assets::ParseMeshAssetInfo(&file);
+
+		std::vector<Vertex> vertices(info.VertexBufferSize / sizeof(Vertex));
+		std::vector<uint32_t> indices(info.IndexBufferSize / sizeof(uint32_t));
+
+		Assets::UnpackMesh(&info, file.Binary.data(), file.Binary.size(), (uint8_t*)vertices.data(), (uint8_t*)indices.data());
 
 		bool success = Impl::CreateVertexBuffer(Impl::State::Data, &mesh->VBO, vertices);
 		if (success) success = Impl::CreateIndexBuffer(Impl::State::Data, &mesh->IBO, indices);

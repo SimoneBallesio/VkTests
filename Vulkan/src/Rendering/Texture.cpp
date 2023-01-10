@@ -6,7 +6,7 @@
 #include "Rendering/Texture.hpp"
 #include "Rendering/State.hpp"
 
-#include <stb_image.h>
+#include <AssetLibrary.hpp>
 
 namespace VKP
 {
@@ -32,34 +32,34 @@ namespace VKP
 		if (it != s_ResourceMap.end())
 			return (*it).second;
 
-		int w = 0, h = 0, nrChannels = 0;
-		uint8_t* data = stbi_load(name.c_str(), &w, &h, &nrChannels, STBI_rgb_alpha);
+		Assets::Asset file;
 
-		if (data == nullptr)
+		if (!Assets::LoadBinary(name.c_str(), file))
 		{
-			VKP_ERROR("Unable to locate texture file");
+			VKP_ERROR("Unable to load raw texture binary file ({})", name);
 			return nullptr;
 		}
+
+		auto info = Assets::ParseTextureAssetInfo(&file);
 
 		Buffer staging = {};
 		Texture* tex = new Texture();
 
-		if (!Impl::CreateBuffer(Impl::State::Data, &staging, w * h * 4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
+		if (!Impl::CreateBuffer(Impl::State::Data, &staging, info.PixelSize[0] * info.PixelSize[1] * 4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
 		{
 			VKP_ERROR("Unable to create staging buffer for texture upload");
-			stbi_image_free(data);
 			delete tex;
 			return nullptr;
 		}
 
 		void* bufData = nullptr;
 		vmaMapMemory(Impl::State::Data->MemAllocator, staging.MemoryHandle, &bufData);
-		memcpy(bufData, data, w * h * 4);
+
+		Assets::UnpackTexture(&info, file.Binary.data(), static_cast<uint8_t*>(bufData), file.Binary.size());
+
 		vmaUnmapMemory(Impl::State::Data->MemAllocator, staging.MemoryHandle);
 
-		stbi_image_free(data);
-
-		if (!Impl::CreateImage(Impl::State::Data, tex, w, h, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT))
+		if (!Impl::CreateImage(Impl::State::Data, tex, info.PixelSize[0], info.PixelSize[1], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT))
 		{
 			VKP_ERROR("Unable to create image object");
 			vmaDestroyBuffer(Impl::State::Data->MemAllocator, staging.BufferHandle, staging.MemoryHandle);
@@ -67,7 +67,7 @@ namespace VKP
 			return nullptr;
 		}
 
-		bool success = Impl::PopulateImage(Impl::State::Data, tex, &staging, w, h);
+		bool success = Impl::PopulateImage(Impl::State::Data, tex, &staging, info.PixelSize[0], info.PixelSize[1]);
 
 		vmaDestroyBuffer(Impl::State::Data->MemAllocator, staging.BufferHandle, staging.MemoryHandle);
 

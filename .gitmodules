@@ -8,7 +8,7 @@
 	path = Vulkan/vendor/glm
 	url = https://github.com/SimoneBallesio/glm
 [submodule "Vulkan/vendor/tinyobjloader"]
-	path = Vulkan/vendor/tinyobjloader
+	path = AssetParser/vendor/tinyobjloader
 	url = https://github.com/SimoneBallesio/tinyobjloader
 [submodule "AssetLibrary/vendor/json"]
 	path = AssetLibrary/vendor/json
