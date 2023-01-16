@@ -8,6 +8,10 @@
 #include "Rendering/Shader.hpp"
 #include "Rendering/Renderer.hpp"
 
+#include <AssetLibrary.hpp>
+
+#include <filesystem>
+
 namespace VKP
 {
 
@@ -15,8 +19,8 @@ namespace VKP
 	{
 		Impl::State::Data->DeletionQueue.Push([&]()
 		{
-			if (m_Model.Model != nullptr)
-			delete m_Model.Model;
+			for (auto& r : m_Models)
+				if (r.Model != nullptr) delete r.Model;
 
 			Renderer3D::Destroy();
 		});
@@ -29,9 +33,7 @@ namespace VKP
 
 	void Application::Init()
 	{
-		m_Diffuse = TextureCache::Get().Create("assets/models/viking_room.texi");
-		m_Model.Model = Mesh::Create("assets/models/viking_room.mesh");
-		m_Model.Mat = MaterialCache::Get().Create("default", { m_Diffuse });
+
 	}
 
 	void Application::Run()
@@ -43,6 +45,8 @@ namespace VKP
 		if (valid) valid = m_Window->Init();
 		if (valid) valid = m_Context->AfterWindowCreation();
 		if (valid) valid = Renderer3D::Init();
+
+		if (valid) valid = LoadPrefab("assets/models/Sponza/Sponza.prfb");
 
 		if (!valid) return;
 
@@ -64,7 +68,9 @@ namespace VKP
 
 		m_Context->BeginFrame();
 
-		Renderer3D::SubmitRenderable(&m_Model);
+		for (auto& r : m_Models)
+			Renderer3D::SubmitRenderable(&r);
+
 		Renderer3D::Flush(&m_Camera);
 
 		m_Context->EndFrame();
@@ -151,6 +157,49 @@ namespace VKP
 	Application& Application::Get()
 	{
 		return *s_Instance;
+	}
+
+	bool Application::LoadPrefab(const char* path)
+	{
+		Assets::Asset file = {};
+		bool success = Assets::LoadBinary(path, file);
+
+		if (!success)
+		{
+			VKP_ERROR("Unable to load prefab asset ({})", path);
+			return false;
+		}
+
+		const auto info = Assets::ParsePrefabAssetInfo(&file);
+		m_Models.reserve(info.NodeMeshes.size());
+
+		for (const auto& [k, m] : info.NodeMeshes)
+		{
+			auto& renderable = m_Models.emplace_back();
+			std::filesystem::path filePath(path);
+			std::filesystem::path folder = filePath.parent_path();
+			std::filesystem::path meshPath = folder / m.MeshPath;
+
+			renderable.Model = Mesh::Create(meshPath.string());
+
+			Assets::Asset matFile = {};
+			std::filesystem::path matPath = folder / m.MaterialPath;
+
+			if (!Assets::LoadBinary(matPath.c_str(), matFile))
+			{
+				VKP_ERROR("Unable to locate material file ({})", m.MaterialPath);
+				return false;
+			}
+
+			const auto matInfo = Assets::ParseMaterialAssetInfo(&matFile);
+			const std::filesystem::path diffusePath = folder / matInfo.Textures.at("diffuse");
+			std::vector<Texture*> textures = { TextureCache::Get().Create(diffusePath) };
+
+			renderable.Mat = MaterialCache::Get().Create(m.MaterialPath, std::move(textures));
+			memcpy(&renderable.Matrix[0][0], info.Matrices[info.NodeMatrices.at(k)].data(), 16 * sizeof(float));
+		}
+
+		return true;
 	}
 
 }
