@@ -18,3 +18,14 @@ target_include_directories(AssetParser PRIVATE vendor/stb_image)
 add_subdirectory(vendor/tinyobjloader)
 target_include_directories(AssetParser PRIVATE vendor/tinyobjloader)
 target_link_libraries(AssetParser PRIVATE tinyobjloader)
+
+# tinygltf
+set(TINYGLTF_BUILD_LOADER_EXAMPLE OFF)
+set(TINYGLTF_INSTALL OFF)
+set(TINYGLTF_HEADER_ONLY ON)
+add_subdirectory(vendor/tinygltf)
+target_include_directories(AssetParser PRIVATE vendor/tinygltf)
+
+# GLM
+target_include_directories(AssetParser PRIVATE ../Vulkan/vendor/glm)
+target_link_libraries(AssetParser INTERFACE glm)

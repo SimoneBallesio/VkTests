@@ -16,3 +16,6 @@
 [submodule "AssetLibrary/vendor/lz4"]
 	path = AssetLibrary/vendor/lz4
 	url = https://github.com/lz4/lz4
+[submodule "AssetParser/vendor/tinygltf"]
+	path = AssetParser/vendor/tinygltf
+	url = https://github.com/syoyo/tinygltf

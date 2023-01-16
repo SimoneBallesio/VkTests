@@ -13,7 +13,8 @@ namespace VKP
 
 	Application::~Application()
 	{
-		Impl::State::Data->DeletionQueue.Push([&]() {
+		Impl::State::Data->DeletionQueue.Push([&]()
+		{
 			if (m_Model.Model != nullptr)
 			delete m_Model.Model;
 

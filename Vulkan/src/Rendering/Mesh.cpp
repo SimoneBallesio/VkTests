@@ -33,7 +33,7 @@ namespace VKP
 
 		if (!Assets::LoadBinary(name.c_str(), file))
 		{
-			VKP_ERROR("Unable to load OBJ model file {}", name);
+			VKP_ERROR("Unable to load model file {}", name);
 			return nullptr;
 		}
 

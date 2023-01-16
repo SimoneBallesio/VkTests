@@ -27,7 +27,7 @@ target_include_directories(Vulkan PRIVATE ${SDL2_INCLUDE_DIRS})
 set(GLM_TEST_ENABLE OFF CACHE BOOL "" FORCE)
 add_subdirectory(${VKP_LIBRARIES_ROOT}/glm)
 target_include_directories(Vulkan PRIVATE ${VKP_LIBRARIES_ROOT}/glm)
-target_link_libraries(Vulkan PRIVATE glm)
+target_link_libraries(Vulkan INTERFACE glm)
 
 # spdlog
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
