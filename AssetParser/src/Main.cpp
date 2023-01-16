@@ -277,9 +277,6 @@ bool ParseGltfIndices(tinygltf::Model& model, tinygltf::Primitive& primitive, st
 		indices.push_back(index);
 	}
 
-	for (size_t i = 0; i < indices.size() / 3; i++)
-		std::swap(indices[i * 3 + 1], indices[i * 3 + 2]);
-
 	return true;
 }
 
@@ -341,7 +338,7 @@ bool ParseGltfMaterials(const tinygltf::Model& model, const std::filesystem::pat
 			const tinygltf::Image& image = model.images[texture.source];
 
 			std::filesystem::path texPath = out.parent_path() / image.uri;
-			texPath.replace_extension(".tx");
+			texPath.replace_extension(".texi");
 
 			info.Textures["diffuse"] = texPath.string();
 		}
@@ -365,6 +362,8 @@ bool ParseGltfNodes(const tinygltf::Model& model, const std::filesystem::path& i
 	{
 		const auto& n = model.nodes[i];
 		info.NodeNames[i] = std::move(n.name);
+
+		std::cout << "   -- Node name: \"" << n.name << "\"\n";
 
 		std::array<float, 16> matrix;
 
@@ -396,6 +395,9 @@ bool ParseGltfNodes(const tinygltf::Model& model, const std::filesystem::path& i
 			memcpy(matrix.data(), &model[0][0], 16 * sizeof(float));
 		}
 
+		info.NodeMatrices[i] = info.Matrices.size();
+		info.Matrices.push_back(std::move(matrix));
+
 		if (n.mesh >= 0)
 		{
 			const auto& mesh = model.meshes[n.mesh];
@@ -413,7 +415,7 @@ bool ParseGltfNodes(const tinygltf::Model& model, const std::filesystem::path& i
 				std::string matName = ParseGltfMaterialName(model, primitive.material);
 				std::filesystem::path matPath = out / (matName + ".matx");
 
-				Assets::MeshNode meshNode = { meshPath.string(), matPath.string() };
+				Assets::MeshNode meshNode = { matPath.string(), meshPath.string() };
 				info.NodeMeshes[i] = std::move(meshNode);
 			}
 		}
@@ -451,8 +453,14 @@ bool ParseGltfNodes(const tinygltf::Model& model, const std::filesystem::path& i
 			std::string matName = ParseGltfMaterialName(model, primitive.material);
 			std::filesystem::path matPath = out / (matName + ".matx");
 
-			Assets::MeshNode meshNode = { meshPath.string(), matPath.string() };
+			Assets::MeshNode meshNode = { matPath.string(), meshPath.string() };
 			info.NodeMeshes[nextIdx] = std::move(meshNode);
+
+			glm::mat4 identity(1.0f);
+			auto& m = info.Matrices.emplace_back();
+			memcpy(m.data(), &identity[0][0], 16 * sizeof(float));
+
+			info.NodeMatrices[nextIdx] = info.Matrices.size();
 		}
 	}
 

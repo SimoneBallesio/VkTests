@@ -26,6 +26,12 @@ namespace Assets
 			info.NodeParents[value[0]] = value[1];
 		}
 
+		for (const auto& p : metadata["nodematrices"].items())
+		{
+			auto& value = p.value();
+			info.NodeMatrices[value[0]] = value[1];
+		}
+
 		const std::unordered_map<uint64_t, nlohmann::json> meshNodes = metadata["nodemeshes"];
 
 		for (const auto& p : meshNodes)
@@ -53,6 +59,7 @@ namespace Assets
 
 		metadata["nodenames"] = info->NodeNames;
 		metadata["nodeparents"] = info->NodeParents;
+		metadata["nodematrices"] = info->NodeMatrices;
 		metadata["matricessize"] = matricesSize;
 		metadata["compression"] = "LZ4";
 
