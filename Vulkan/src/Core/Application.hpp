@@ -43,8 +43,8 @@ namespace VKP
 
 		Camera m_Camera = {};
 
-		Renderable m_Model = {};
-		Texture* m_Diffuse = nullptr;
+		std::vector<Renderable> m_Models = {};
+		std::vector<Texture*> m_Textures = {};
 
 		bool m_Running = true;
 
@@ -55,6 +55,8 @@ namespace VKP
 		bool m_Left = false;
 
 		Application() = default;
+
+		bool LoadPrefab(const char* path);
 
 		inline static Application* s_Instance = nullptr;
 	};

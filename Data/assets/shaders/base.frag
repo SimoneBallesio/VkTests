@@ -18,5 +18,9 @@ layout (location = 0) out vec4 Color;
 
 void main()
 {
-	Color = vec4(In.Color * texture(diffuse, In.TexCoord).rgb, 1.0);
+	vec4 color = texture(diffuse, In.TexCoord).rgba;
+
+	if (color.a < 0.5) discard;
+
+	Color = vec4(color.rgb, 1.0);
 }
