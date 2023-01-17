@@ -313,6 +313,8 @@ bool ParseGltfMeshes(tinygltf::Model& model, const std::filesystem::path& out)
 			Assets::Asset file = Assets::PackMesh(&info, vertices.data(), indices.data());
 			const std::filesystem::path outPath = out / (info.Name + ".mesh");
 
+			std::cout << "   -- Mesh: " << info.Name << " >> " << outPath.c_str() << '\n';
+
 			Assets::SaveBinary(outPath.c_str(), file);
 		}
 	}
@@ -337,7 +339,7 @@ bool ParseGltfMaterials(const tinygltf::Model& model, const std::filesystem::pat
 			const tinygltf::Texture& texture = model.textures[pbr.baseColorTexture.index];
 			const tinygltf::Image& image = model.images[texture.source];
 
-			std::filesystem::path texPath = out.parent_path() / image.uri;
+			std::filesystem::path texPath = out / image.uri;
 			texPath.replace_extension(".texi");
 
 			info.Textures["diffuse"] = texPath.string();
@@ -345,6 +347,8 @@ bool ParseGltfMaterials(const tinygltf::Model& model, const std::filesystem::pat
 
 		const std::string matName = ParseGltfMaterialName(model, i);
 		std::filesystem::path outPath = out / (matName + ".matx");
+
+		std::cout << "   -- Material: " << matName << " >> " << outPath.c_str() << '\n';
 
 		Assets::Asset file = Assets::PackMaterial(&info);
 		Assets::SaveBinary(outPath.c_str(), file);
@@ -362,8 +366,6 @@ bool ParseGltfNodes(const tinygltf::Model& model, const std::filesystem::path& i
 	{
 		const auto& n = model.nodes[i];
 		info.NodeNames[i] = std::move(n.name);
-
-		std::cout << "   -- Node name: \"" << n.name << "\"\n";
 
 		std::array<float, 16> matrix;
 
@@ -466,8 +468,10 @@ bool ParseGltfNodes(const tinygltf::Model& model, const std::filesystem::path& i
 
 	Assets::Asset file = Assets::PackPrefabAsset(&info);
 
-	std::filesystem::path prefabPath = (out.parent_path()) / in.stem();
+	std::filesystem::path prefabPath = out / in.stem();
 	prefabPath.replace_extension(".prfb");
+
+	std::cout << "   -- Prefab: " << in.stem().c_str() << " >> " << prefabPath.c_str() << '\n';
 
 	Assets::SaveBinary(prefabPath.c_str(), file);
 
@@ -488,7 +492,7 @@ bool ParseGltf(const std::filesystem::path& in)
 	if (!err.empty())
 		std::cout << "GLTF Error: " << err << '\n';
 
-	const std::filesystem::path out = in.parent_path() / (in.stem().string() + "_GLTF");
+	const std::filesystem::path out = in.parent_path();
 	std::filesystem::create_directory(out);
 
 	if (success) success = ParseGltfMeshes(model, out);
@@ -509,7 +513,7 @@ int main(int argc, char** argv)
 			auto out = it.path();
 			out.replace_extension(".texi");
 
-			std::cout << "-- Parsing texture " << it.path().c_str() << " >> " << out.c_str() << '\n';
+			std::cout << "-- Parsing texture " << it.path().stem().c_str() << " >> " << out.c_str() << '\n';
 
 			if (!ParseTexture(it.path(), out))
 			{
@@ -525,7 +529,7 @@ int main(int argc, char** argv)
 			auto out = it.path();
 			out.replace_extension(".mesh");
 
-			std::cout << "-- Parsing mesh (OBJ) " << it.path().c_str() << " >> " << out.c_str() << '\n';
+			std::cout << "-- Parsing mesh (OBJ) " << it.path().stem().c_str() << " >> " << out.c_str() << '\n';
 
 			if (!ParseObj(it.path(), out))
 			{
@@ -538,7 +542,7 @@ int main(int argc, char** argv)
 
 		if (it.path().extension() == ".gltf")
 		{
-			std::cout << "-- Parsing mesh (GLTF) " << it.path().c_str() << '\n';
+			std::cout << "-- Parsing mesh (GLTF) " << it.path().stem().c_str() << '\n';
 
 			if (!ParseGltf(it.path()))
 			{

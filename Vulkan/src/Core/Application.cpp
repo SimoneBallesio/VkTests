@@ -176,24 +176,18 @@ namespace VKP
 		for (const auto& [k, m] : info.NodeMeshes)
 		{
 			auto& renderable = m_Models.emplace_back();
-			std::filesystem::path filePath(path);
-			std::filesystem::path folder = filePath.parent_path();
-			std::filesystem::path meshPath = folder / m.MeshPath;
-
-			renderable.Model = Mesh::Create(meshPath.string());
+			renderable.Model = Mesh::Create(m.MeshPath);
 
 			Assets::Asset matFile = {};
-			std::filesystem::path matPath = folder / m.MaterialPath;
 
-			if (!Assets::LoadBinary(matPath.c_str(), matFile))
+			if (!Assets::LoadBinary(m.MaterialPath.c_str(), matFile))
 			{
 				VKP_ERROR("Unable to locate material file ({})", m.MaterialPath);
 				return false;
 			}
 
 			const auto matInfo = Assets::ParseMaterialAssetInfo(&matFile);
-			const std::filesystem::path diffusePath = folder / matInfo.Textures.at("diffuse");
-			std::vector<Texture*> textures = { TextureCache::Get().Create(diffusePath) };
+			std::vector<Texture*> textures = { TextureCache::Get().Create(matInfo.Textures.at("diffuse")) };
 
 			renderable.Mat = MaterialCache::Get().Create(m.MaterialPath, std::move(textures));
 			memcpy(&renderable.Matrix[0][0], info.Matrices[info.NodeMatrices.at(k)].data(), 16 * sizeof(float));
