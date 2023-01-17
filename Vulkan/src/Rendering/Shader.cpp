@@ -213,7 +213,7 @@ namespace VKP
 					binding.descriptorCount = 1;
 					binding.stageFlags = static_cast<VkShaderStageFlagBits>(module.shader_stage);
 
-					if (strcmp(b.name, "UBO") == 0)
+					if (strcmp("Scene", b.name) == 0)
 						binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 
 					for (size_t n = 0; n < b.array.dims_count; n++)

@@ -129,6 +129,19 @@ namespace VKP::Impl
 		return true;
 	}
 
+	bool CreateStorageBuffer(State* s, Buffer* ssbo, VkDeviceSize size)
+	{
+		if (!CreateBuffer(s, ssbo, size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT))
+		{
+			VKP_ERROR("Unable to create storage buffer");
+			return false;
+		}
+
+		ssbo->Size = (uint32_t)size;
+
+		return true;
+	}
+
 	void DestroyBuffer(State* s, Buffer* buffer)
 	{
 		if (buffer->BufferHandle != VK_NULL_HANDLE)

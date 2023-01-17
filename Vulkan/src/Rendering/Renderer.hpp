@@ -26,6 +26,9 @@ namespace VKP
 		VkDescriptorSet GlobalDataDescSet = VK_NULL_HANDLE;
 		uint32_t GlobalDataDescSetOffset = 0;
 
+		Buffer ObjectSSBO = {};
+		VkDescriptorSet ObjectDataDescSet = VK_NULL_HANDLE;
+
 		VkRenderPass DefaultPass = VK_NULL_HANDLE;
 		std::vector<VkFramebuffer> DefaultFramebuffers = {};
 

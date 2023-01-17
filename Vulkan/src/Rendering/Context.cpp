@@ -443,6 +443,10 @@ namespace VKP::Impl
 
 #endif
 
+		VkPhysicalDeviceShaderDrawParametersFeatures drawParamFeatures = {};
+		drawParamFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETER_FEATURES;
+		drawParamFeatures.shaderDrawParameters = VK_TRUE;
+
 		VkDeviceCreateInfo deviceInfo = {};
 		deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 		deviceInfo.pQueueCreateInfos = queueInfos.data();
@@ -452,6 +456,7 @@ namespace VKP::Impl
 		deviceInfo.ppEnabledExtensionNames = extensions.data();
 		deviceInfo.enabledExtensionCount = extensions.size();
 		deviceInfo.pEnabledFeatures = &features;
+		deviceInfo.pNext = &drawParamFeatures;
 
 		if (vkCreateDevice(s->PhysDevice, &deviceInfo, nullptr, &s->Device) != VK_SUCCESS)
 		{

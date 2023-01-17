@@ -25,7 +25,7 @@ namespace VKP
 			s_Data.Textures = TextureCache::Create();
 			s_Data.Meshes = MeshCache::Create();
 
-			s_Renderables.reserve(1000);
+			s_Renderables.reserve(10000);
 
 			Impl::State::Data->DeletionQueue.Push([=]()
 			{
@@ -41,6 +41,7 @@ namespace VKP
 	void Renderer3D::Destroy()
 	{
 		Impl::DestroyBuffer(Impl::State::Data, &s_Data.GlobalUBO);
+		Impl::DestroyBuffer(Impl::State::Data, &s_Data.ObjectSSBO);
 
 		for (auto f : s_Data.DefaultFramebuffers)
 			vkDestroyFramebuffer(Impl::State::Data->Device, f, nullptr);
@@ -100,15 +101,23 @@ namespace VKP
 
 	void Renderer3D::Flush(Camera* camera)
 	{
-		VkDescriptorBufferInfo info = {};
-		info.buffer = s_Data.GlobalUBO.BufferHandle;
-		info.offset = 0;
-		info.range = s_Data.GlobalUBO.Size;
+		VkDescriptorBufferInfo uboInfo = {};
+		uboInfo.buffer = s_Data.GlobalUBO.BufferHandle;
+		uboInfo.offset = 0;
+		uboInfo.range = s_Data.GlobalUBO.Size;
 
 		DescriptorSetFactory builder(Impl::State::Data->Device, Impl::State::Data->DescriptorSetLayouts, Impl::State::Data->Frames[Impl::State::Data->CurrentFrame].DynDescriptorSetAlloc);
-		builder.BindBuffer(0, &info, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+		builder.BindBuffer(0, &uboInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_SHADER_STAGE_VERTEX_BIT);
 		builder.Build(s_Data.GlobalDataDescSet);
 		s_Data.GlobalDataDescSetOffset = Impl::State::Data->CurrentFrame * s_Data.GlobalUBO.AlignedSize;
+
+		VkDescriptorBufferInfo ssboInfo = {};
+		ssboInfo.buffer = s_Data.ObjectSSBO.BufferHandle;
+		ssboInfo.offset = 0;
+		ssboInfo.range = s_Data.ObjectSSBO.Size;
+
+		builder.BindBuffer(0, &ssboInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT);
+		builder.Build(s_Data.ObjectDataDescSet);
 
 		std::vector<VkClearValue> clearColors(2);
 
@@ -149,6 +158,14 @@ namespace VKP
 
 			vmaUnmapMemory(Impl::State::Data->MemAllocator, s_Data.GlobalUBO.MemoryHandle);
 
+			glm::mat4* matrices;
+			vmaMapMemory(Impl::State::Data->MemAllocator, s_Data.ObjectSSBO.MemoryHandle, (void**)&matrices);
+
+			for (size_t i = 0; i < s_Renderables.size(); i++)
+				memcpy(&matrices[i], &s_Renderables[i]->Matrix[0][0], sizeof(glm::mat4));
+
+			vmaUnmapMemory(Impl::State::Data->MemAllocator, s_Data.ObjectSSBO.MemoryHandle);
+
 			for (const auto& r : s_Renderables)
 			{
 				if (pipeline != r->Mat->Template->Pipe)
@@ -157,12 +174,13 @@ namespace VKP
 
 					vkCmdBindPipeline(Impl::State::Data->CurrentCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 					vkCmdBindDescriptorSets(Impl::State::Data->CurrentCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->Mat->Template->PipeLayout, 0, 1, &s_Data.GlobalDataDescSet, 1, &s_Data.GlobalDataDescSetOffset);
+					vkCmdBindDescriptorSets(Impl::State::Data->CurrentCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->Mat->Template->PipeLayout, 1, 1, &s_Data.ObjectDataDescSet, 0, nullptr);
 				}
 
 				if (textureSet != r->Mat->TextureSet)
 				{
 					textureSet = r->Mat->TextureSet;
-					vkCmdBindDescriptorSets(Impl::State::Data->CurrentCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->Mat->Template->PipeLayout, 1, 1, &textureSet, 0, nullptr);
+					vkCmdBindDescriptorSets(Impl::State::Data->CurrentCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->Mat->Template->PipeLayout, 2, 1, &textureSet, 0, nullptr);
 				}
 
 				vkCmdBindVertexBuffers(Impl::State::Data->CurrentCmdBuffer, 0, 1, &r->Model->VBO.BufferHandle, &offset);
@@ -287,7 +305,10 @@ namespace VKP
 
 	bool Renderer3D::CreateBuffers()
 	{
-		return Impl::CreateUniformBuffer(Impl::State::Data, &s_Data.GlobalUBO, sizeof(GlobalData));
+		bool success = Impl::CreateUniformBuffer(Impl::State::Data, &s_Data.GlobalUBO, sizeof(GlobalData));
+		if (success) success = Impl::CreateStorageBuffer(Impl::State::Data, &s_Data.ObjectSSBO, 10000 * sizeof(glm::mat4));
+
+		return success;
 	}
 
 }

@@ -28,6 +28,7 @@ namespace VKP::Impl
 	bool CreateVertexBuffer(State* s, Buffer* vbo, const std::vector<Vertex>& vertices);
 	bool CreateIndexBuffer(State* s, Buffer* ibo, const std::vector<uint32_t>& indices);
 	bool CreateUniformBuffer(State* s, Buffer* ubo, VkDeviceSize size);
+	bool CreateStorageBuffer(State* s, Buffer* ssbo, VkDeviceSize size);
 	void DestroyBuffer(State* s, Buffer* buffer);
 	
 }
