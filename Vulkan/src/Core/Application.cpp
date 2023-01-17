@@ -168,10 +168,47 @@ namespace VKP
 		const auto info = Assets::ParsePrefabAssetInfo(&file);
 		m_Models.reserve(info.NodeMeshes.size());
 
+		std::unordered_map<uint64_t, glm::mat4> worldMatrices;
+		std::vector<std::pair<uint64_t, glm::mat4>> pendingNodes;
+
+		for (const auto& [k, v] : info.NodeMatrices)
+		{
+			glm::mat4 mat;
+			memcpy(&mat[0][0], info.Matrices[v].data(), sizeof(glm::mat4));
+
+			if (info.NodeParents.find(k) == info.NodeParents.end())
+			{
+				worldMatrices[k] = mat;
+				continue;
+			}
+
+			pendingNodes.push_back({ k, mat });
+		}
+
+		while (pendingNodes.size() > 0)
+		{
+			for (size_t i = 0; i < pendingNodes.size(); i++)
+			{
+				uint64_t node = pendingNodes[i].first;
+				uint64_t parent = info.NodeParents.at(node);
+				auto it = worldMatrices.find(parent);
+
+				if (it != worldMatrices.end())
+				{
+					glm::mat4 mat = it->second * pendingNodes[i].second;
+					worldMatrices[node] = mat;
+
+					pendingNodes[i] = pendingNodes.back();
+					pendingNodes.pop_back();
+					i--;
+				}
+			}
+		}
+
 		for (const auto& [k, m] : info.NodeMeshes)
 		{
 			auto& renderable = m_Models.emplace_back();
-			renderable.Model = Mesh::Create(m.MeshPath);
+			renderable.Model = MeshCache::Get().Create(m.MeshPath);
 
 			Assets::Asset matFile = {};
 
@@ -185,7 +222,9 @@ namespace VKP
 			std::vector<Texture*> textures = { TextureCache::Get().Create(matInfo.Textures.at("diffuse")) };
 
 			renderable.Mat = MaterialCache::Get().Create(m.MaterialPath, std::move(textures));
-			memcpy(&renderable.Matrix[0][0], info.Matrices[info.NodeMatrices.at(k)].data(), 16 * sizeof(float));
+
+			if (worldMatrices.find(k) != worldMatrices.end())
+				renderable.Matrix = worldMatrices.at(k);
 		}
 
 		return true;

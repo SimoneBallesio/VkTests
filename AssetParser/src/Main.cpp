@@ -430,6 +430,7 @@ bool ParseGltfNodes(const tinygltf::Model& model, const std::filesystem::path& i
 	}
 
 	int nodeIdx = model.nodes.size();
+	const glm::mat4 identity(1.0f);
 
 	for (int i = 0; i < meshNodes.size(); i++)
 	{
@@ -458,11 +459,11 @@ bool ParseGltfNodes(const tinygltf::Model& model, const std::filesystem::path& i
 			Assets::MeshNode meshNode = { matPath.string(), meshPath.string() };
 			info.NodeMeshes[nextIdx] = std::move(meshNode);
 
-			glm::mat4 identity(1.0f);
 			auto& m = info.Matrices.emplace_back();
 			memcpy(m.data(), &identity[0][0], 16 * sizeof(float));
 
 			info.NodeMatrices[nextIdx] = info.Matrices.size();
+			info.NodeParents[nextIdx] = node.mesh;
 		}
 	}
 
