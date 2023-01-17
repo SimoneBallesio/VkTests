@@ -11,18 +11,24 @@
 
 namespace VKP
 {
-	
-	std::unordered_map<std::string, Mesh*> Mesh::s_ResourceMap = {};
 
-	Mesh::~Mesh()
+	MeshCache* MeshCache::s_Instance = nullptr;
+	std::unordered_map<std::string, Mesh*> MeshCache::s_ResourceMap = {};
+
+	MeshCache::~MeshCache()
 	{
-		Impl::DestroyBuffer(Impl::State::Data, &VBO);
-		Impl::DestroyBuffer(Impl::State::Data, &IBO);
+		for (auto& p : s_ResourceMap)
+		{
+			Impl::DestroyBuffer(Impl::State::Data, &p.second->VBO);
+			Impl::DestroyBuffer(Impl::State::Data, &p.second->IBO);
 
-		s_ResourceMap.erase(Path);
+			delete p.second;
+		}
+
+		s_ResourceMap.clear();
 	}
 
-	Mesh* Mesh::Create(const std::string& name)
+	Mesh* MeshCache::Create(const std::string& name)
 	{
 		auto it = s_ResourceMap.find(name);
 
@@ -53,6 +59,9 @@ namespace VKP
 
 		else
 		{
+			Impl::DestroyBuffer(Impl::State::Data, &mesh->VBO);
+			Impl::DestroyBuffer(Impl::State::Data, &mesh->IBO);
+
 			delete mesh;
 			return nullptr;
 		}
@@ -60,6 +69,19 @@ namespace VKP
 		s_ResourceMap[name] = mesh;
 
 		return mesh;
+	}
+
+	MeshCache* MeshCache::Create()
+	{
+		if (s_Instance == nullptr)
+			s_Instance = new MeshCache();
+
+		return s_Instance;
+	}
+
+	MeshCache& MeshCache::Get()
+	{
+		return *s_Instance;
 	}
 
 }

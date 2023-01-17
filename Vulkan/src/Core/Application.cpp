@@ -7,6 +7,7 @@
 #include "Rendering/Context.hpp"
 #include "Rendering/Shader.hpp"
 #include "Rendering/Renderer.hpp"
+#include "Rendering/Mesh.hpp"
 
 #include <AssetLibrary.hpp>
 
@@ -17,13 +18,7 @@ namespace VKP
 
 	Application::~Application()
 	{
-		Impl::State::Data->DeletionQueue.Push([&]()
-		{
-			for (auto& r : m_Models)
-				if (r.Model != nullptr) delete r.Model;
-
-			Renderer3D::Destroy();
-		});
+		Impl::State::Data->DeletionQueue.Push([&]() { Renderer3D::Destroy(); });
 
 		delete m_Context;
 		delete m_Window;

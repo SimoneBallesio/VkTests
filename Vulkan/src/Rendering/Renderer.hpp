@@ -13,6 +13,7 @@ namespace VKP
 
 	struct Camera;
 	struct Renderable;
+	class MeshCache;
 
 	struct GlobalData
 	{
@@ -30,6 +31,7 @@ namespace VKP
 
 		MaterialCache* Materials = nullptr;
 		TextureCache* Textures = nullptr;
+		MeshCache* Meshes = nullptr;
 	};
 
 	class Renderer3D final

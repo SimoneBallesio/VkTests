@@ -23,12 +23,15 @@ namespace VKP
 		{
 			s_Data.Materials = MaterialCache::Create(Impl::State::Data->Device);
 			s_Data.Textures = TextureCache::Create();
+			s_Data.Meshes = MeshCache::Create();
 
 			s_Renderables.reserve(1000);
 
-			Impl::State::Data->DeletionQueue.Push([=]() {
+			Impl::State::Data->DeletionQueue.Push([=]()
+			{
 				delete s_Data.Textures;
 				delete s_Data.Materials;
+				delete s_Data.Meshes;
 			});
 		}
 

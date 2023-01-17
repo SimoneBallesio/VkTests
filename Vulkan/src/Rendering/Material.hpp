@@ -23,20 +23,18 @@ namespace VKP
 
 		MaterialCache& operator=(MaterialCache&) = delete;
 
-		Material* Create(const std::string& name, const std::vector<Texture*> textures);
+		Material* Create(const std::string& name, const std::vector<Texture*>& textures);
 
 		static MaterialCache* Create(VkDevice device);
-		static void Destroy();
-
 		static MaterialCache& Get();
 
 	private:
 		VkDevice m_Device;
 
+		Pipeline m_DefaultTemplate = {};
+
 		static MaterialCache* s_Instance;
 		static std::unordered_map<std::string, Material*> s_ResourceMap;
-
-		Pipeline m_DefaultTemplate = {};
 
 		MaterialCache(VkDevice device);
 	};

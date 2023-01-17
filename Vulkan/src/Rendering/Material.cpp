@@ -44,7 +44,7 @@ namespace VKP
 		s_ResourceMap.clear();
 	}
 
-	Material* MaterialCache::Create(const std::string& name, const std::vector<Texture*> textures)
+	Material* MaterialCache::Create(const std::string& name, const std::vector<Texture*>& textures)
 	{
 		auto it = s_ResourceMap.find(name);
 
@@ -86,12 +86,6 @@ namespace VKP
 			s_Instance = new MaterialCache(device);
 
 		return s_Instance;
-	}
-
-	void MaterialCache::Destroy()
-	{
-		delete s_Instance;
-		s_Instance = nullptr;
 	}
 
 	MaterialCache& MaterialCache::Get()
