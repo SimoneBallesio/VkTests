@@ -9,6 +9,8 @@
 #include "Rendering/Renderer.hpp"
 #include "Rendering/Mesh.hpp"
 
+#include "Scene/Scene.hpp"
+
 #include <AssetLibrary.hpp>
 
 #include <filesystem>
@@ -22,6 +24,7 @@ namespace VKP
 
 		delete m_Context;
 		delete m_Window;
+		delete m_Scene;
 
 		s_Instance = nullptr;
 	}
@@ -35,13 +38,14 @@ namespace VKP
 	{
 		m_Context = Context::Create();
 		m_Window = Window::Create(1280, 720);
+		m_Scene = Scene::Create();
 
 		bool valid = m_Context->BeforeWindowCreation();
 		if (valid) valid = m_Window->Init();
 		if (valid) valid = m_Context->AfterWindowCreation();
 		if (valid) valid = Renderer3D::Init();
 
-		if (valid) valid = LoadPrefab("assets/models/Sponza/Sponza.prfb");
+		if (valid) valid = m_Scene->LoadFromPrefab("assets/models/Sponza/Sponza.prfb");
 
 		if (!valid) return;
 
@@ -63,8 +67,8 @@ namespace VKP
 
 		m_Context->BeginFrame();
 
-		for (auto& r : m_Models)
-			Renderer3D::SubmitRenderable(&r);
+		for (auto it = m_Scene->Begin(); it != m_Scene->End(); it++)
+			Renderer3D::SubmitRenderable(&(*it));
 
 		Renderer3D::Flush(&m_Camera);
 
@@ -152,82 +156,6 @@ namespace VKP
 	Application& Application::Get()
 	{
 		return *s_Instance;
-	}
-
-	bool Application::LoadPrefab(const char* path)
-	{
-		Assets::Asset file = {};
-		bool success = Assets::LoadBinary(path, file);
-
-		if (!success)
-		{
-			VKP_ERROR("Unable to load prefab asset ({})", path);
-			return false;
-		}
-
-		const auto info = Assets::ParsePrefabAssetInfo(&file);
-		m_Models.reserve(info.NodeMeshes.size());
-
-		std::unordered_map<uint64_t, glm::mat4> worldMatrices;
-		std::vector<std::pair<uint64_t, glm::mat4>> pendingNodes;
-
-		for (const auto& [k, v] : info.NodeMatrices)
-		{
-			glm::mat4 mat;
-			memcpy(&mat[0][0], info.Matrices[v].data(), sizeof(glm::mat4));
-
-			if (info.NodeParents.find(k) == info.NodeParents.end())
-			{
-				worldMatrices[k] = mat;
-				continue;
-			}
-
-			pendingNodes.push_back({ k, mat });
-		}
-
-		while (pendingNodes.size() > 0)
-		{
-			for (size_t i = 0; i < pendingNodes.size(); i++)
-			{
-				uint64_t node = pendingNodes[i].first;
-				uint64_t parent = info.NodeParents.at(node);
-				auto it = worldMatrices.find(parent);
-
-				if (it != worldMatrices.end())
-				{
-					glm::mat4 mat = it->second * pendingNodes[i].second;
-					worldMatrices[node] = mat;
-
-					pendingNodes[i] = pendingNodes.back();
-					pendingNodes.pop_back();
-					i--;
-				}
-			}
-		}
-
-		for (const auto& [k, m] : info.NodeMeshes)
-		{
-			auto& renderable = m_Models.emplace_back();
-			renderable.Model = MeshCache::Get().Create(m.MeshPath);
-
-			Assets::Asset matFile = {};
-
-			if (!Assets::LoadBinary(m.MaterialPath.c_str(), matFile))
-			{
-				VKP_ERROR("Unable to locate material file ({})", m.MaterialPath);
-				return false;
-			}
-
-			const auto matInfo = Assets::ParseMaterialAssetInfo(&matFile);
-			std::vector<Texture*> textures = { TextureCache::Get().Create(matInfo.Textures.at("diffuse")) };
-
-			renderable.Mat = MaterialCache::Get().Create(m.MaterialPath, std::move(textures));
-
-			if (worldMatrices.find(k) != worldMatrices.end())
-				renderable.Matrix = worldMatrices.at(k);
-		}
-
-		return true;
 	}
 
 }

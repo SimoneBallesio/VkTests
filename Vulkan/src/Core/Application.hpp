@@ -12,6 +12,7 @@ namespace VKP
 
 	class Window;
 	class Context;
+	class Scene;
 
 	class Application final
 	{
@@ -41,10 +42,8 @@ namespace VKP
 		Context* m_Context = nullptr;
 		Window* m_Window = nullptr;
 
+		Scene* m_Scene = nullptr;
 		Camera m_Camera = {};
-
-		std::vector<Renderable> m_Models = {};
-		std::vector<Texture*> m_Textures = {};
 
 		bool m_Running = true;
 
@@ -55,8 +54,6 @@ namespace VKP
 		bool m_Left = false;
 
 		Application() = default;
-
-		bool LoadPrefab(const char* path);
 
 		inline static Application* s_Instance = nullptr;
 	};
