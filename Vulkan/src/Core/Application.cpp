@@ -51,8 +51,28 @@ namespace VKP
 
 		Init();
 
+#ifdef VKP_DEBUG
+
+		std::chrono::time_point<std::chrono::system_clock> start, end;
+
+		start = std::chrono::system_clock::now();
+		end = std::chrono::system_clock::now();
+
+#endif
+
 		while (m_Running)
 		{
+
+#ifdef VKP_DEBUG
+
+			end = std::chrono::system_clock::now();
+			std::chrono::duration<float> delta = end - start;
+
+			m_Stats.FrameTime = delta.count() * 1000.0f;
+			start = std::chrono::system_clock::now();
+
+#endif
+
 			Draw();
 			m_Window->PollEvents();
 		}

@@ -89,26 +89,6 @@ namespace VKP
 		return true;
 	}
 
-	std::vector<Renderable>::iterator Scene::Begin()
-	{
-		return m_Renderables.begin();
-	}
-
-	std::vector<Renderable>::iterator Scene::End()
-	{
-		return m_Renderables.end();
-	}
-
-	std::vector<Renderable>::const_iterator Scene::Begin() const
-	{
-		return m_Renderables.begin();
-	}
-
-	std::vector<Renderable>::const_iterator Scene::End() const
-	{
-		return m_Renderables.end();
-	}
-
 	Scene* Scene::Create()
 	{
 		return new Scene();

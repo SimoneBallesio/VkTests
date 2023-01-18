@@ -13,11 +13,11 @@ namespace VKP
 
 		bool LoadFromPrefab(const char* path);
 
-		std::vector<Renderable>::iterator Begin();
-		std::vector<Renderable>::iterator End();
+		inline std::vector<Renderable>::iterator Begin() { return m_Renderables.begin(); }
+		inline std::vector<Renderable>::iterator End() { return m_Renderables.end(); }
 
-		std::vector<Renderable>::const_iterator Begin() const;
-		std::vector<Renderable>::const_iterator End() const;
+		inline std::vector<Renderable>::const_iterator Begin() const { return m_Renderables.begin(); }
+		inline std::vector<Renderable>::const_iterator End() const { return m_Renderables.end(); }
 
 		Scene& operator=(Scene&) = delete;
 

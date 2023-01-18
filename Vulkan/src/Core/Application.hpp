@@ -14,6 +14,15 @@ namespace VKP
 	class Context;
 	class Scene;
 
+#ifdef VKP_DEBUG	
+
+	struct Stats
+	{
+		float FrameTime = 0.0f;
+	};
+
+#endif
+
 	class Application final
 	{
 	public:
@@ -44,6 +53,12 @@ namespace VKP
 
 		Scene* m_Scene = nullptr;
 		Camera m_Camera = {};
+
+#ifdef VKP_DEBUG
+
+		Stats m_Stats = {};
+
+#endif
 
 		bool m_Running = true;
 
