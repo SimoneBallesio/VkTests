@@ -15,14 +15,15 @@ target_link_libraries(AssetParser PRIVATE AssetLibrary)
 target_include_directories(AssetParser PRIVATE vendor/stb_image)
 
 # tinyobjloader
+set(TINYOBJLOADER_BUILD_TEST_LOADER OFF CACHE BOOL "" FORCE)
 add_subdirectory(vendor/tinyobjloader)
 target_include_directories(AssetParser PRIVATE vendor/tinyobjloader)
 target_link_libraries(AssetParser PRIVATE tinyobjloader)
 
 # tinygltf
-set(TINYGLTF_BUILD_LOADER_EXAMPLE OFF)
-set(TINYGLTF_INSTALL OFF)
-set(TINYGLTF_HEADER_ONLY ON)
+set(TINYGLTF_BUILD_LOADER_EXAMPLE OFF CACHE BOOL "" FORCE)
+set(TINYGLTF_INSTALL OFF CACHE BOOL "" FORCE)
+set(TINYGLTF_HEADER_ONLY ON CACHE BOOL "" FORCE)
 add_subdirectory(vendor/tinygltf)
 target_include_directories(AssetParser PRIVATE vendor/tinygltf)
 

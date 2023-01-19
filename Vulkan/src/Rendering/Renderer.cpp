@@ -166,8 +166,10 @@ namespace VKP
 
 			vmaUnmapMemory(Impl::State::Data->MemAllocator, s_Data.ObjectSSBO.MemoryHandle);
 
-			for (const auto& r : s_Renderables)
+			for (size_t i = 0; i < s_Renderables.size(); i++)
 			{
+				const auto& r = s_Renderables[i];
+
 				if (pipeline != r->Mat->Template->Pipe)
 				{
 					pipeline = r->Mat->Template->Pipe;
@@ -186,7 +188,7 @@ namespace VKP
 				vkCmdBindVertexBuffers(Impl::State::Data->CurrentCmdBuffer, 0, 1, &r->Model->VBO.BufferHandle, &offset);
 				vkCmdBindIndexBuffer(Impl::State::Data->CurrentCmdBuffer, r->Model->IBO.BufferHandle, 0, VK_INDEX_TYPE_UINT32);
 
-				vkCmdDrawIndexed(Impl::State::Data->CurrentCmdBuffer, r->Model->NumIndices, 1, 0, 0, 0);
+				vkCmdDrawIndexed(Impl::State::Data->CurrentCmdBuffer, r->Model->NumIndices, 1, 0, 0, i);
 			}
 		}
 

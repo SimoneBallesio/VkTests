@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 
 layout (location = 0) in vec3 aPosition;
 layout (location = 1) in vec3 aColor;
@@ -29,7 +29,7 @@ out vs_out
 
 void main()
 {
-	gl_Position = Scene.VP * Objects.Matrices[gl_BaseInstance].Model * vec4(aPosition, 1.0);
+	gl_Position = Scene.VP * Objects.Matrices[gl_InstanceIndex].Model * vec4(aPosition, 1.0);
 	Out.TexCoord = aTexCoord;
 	Out.Color = aColor;
 }
