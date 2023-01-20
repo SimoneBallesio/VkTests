@@ -11,7 +11,7 @@ namespace VKP
 {
 
 	Renderer3DData Renderer3D::s_Data = {};
-	std::vector<Renderable*> Renderer3D::s_Renderables = {};
+	MeshPass Renderer3D::s_ForwardPass = {};
 
 	bool Renderer3D::Init()
 	{
@@ -25,7 +25,7 @@ namespace VKP
 			s_Data.Textures = TextureCache::Create();
 			s_Data.Meshes = MeshCache::Create();
 
-			s_Renderables.reserve(10000);
+			s_ForwardPass.UnbatchedObjects.reserve(10000);
 
 			Impl::State::Data->DeletionQueue.Push([=]()
 			{
@@ -41,7 +41,10 @@ namespace VKP
 	void Renderer3D::Destroy()
 	{
 		Impl::DestroyBuffer(Impl::State::Data, &s_Data.GlobalUBO);
-		Impl::DestroyBuffer(Impl::State::Data, &s_Data.ObjectSSBO);
+		Impl::DestroyBuffer(Impl::State::Data, &s_Data.GlobalUBO);
+
+		Impl::DestroyBuffer(Impl::State::Data, &s_Data.GlobalVBO);
+		Impl::DestroyBuffer(Impl::State::Data, &s_Data.GlobalIBO);
 
 		for (auto f : s_Data.DefaultFramebuffers)
 			vkDestroyFramebuffer(Impl::State::Data->Device, f, nullptr);
@@ -96,7 +99,7 @@ namespace VKP
 	void Renderer3D::SubmitRenderable(Renderable* obj)
 	{
 		VKP_ASSERT(obj != nullptr, "Null-pointer submitted as Renderable");
-		s_Renderables.push_back(obj);
+		s_ForwardPass.UnbatchedObjects.push_back(obj);
 	}
 
 	void Renderer3D::Flush(Camera* camera)
@@ -138,61 +141,59 @@ namespace VKP
 		vkCmdSetViewport(Impl::State::Data->CurrentCmdBuffer, 0, 1, &Impl::State::Data->Viewport);
 		vkCmdSetScissor(Impl::State::Data->CurrentCmdBuffer, 0, 1, &Impl::State::Data->Scissor);
 
-		if (s_Renderables.size() > 0)
-		{
-			VkPipeline pipeline = VK_NULL_HANDLE;
-			VkDescriptorSet textureSet = VK_NULL_HANDLE;
-			VkDeviceSize offset = 0;
+		// if (s_Renderables.size() > 0)
+		// {
+		// 	VkPipeline pipeline = VK_NULL_HANDLE;
+		// 	VkDescriptorSet textureSet = VK_NULL_HANDLE;
+		// 	VkDeviceSize offset = 0;
 
-			const float aspect = (float)Impl::State::Data->SurfaceWidth / (float)Impl::State::Data->SurfaceHeight;
-			const glm::mat4 proj = glm::perspective(glm::radians(70.0f), aspect, 0.1f, 100.0f);
-			const glm::mat4 vp = proj * camera->ViewMatrix();
+		// 	const float aspect = (float)Impl::State::Data->SurfaceWidth / (float)Impl::State::Data->SurfaceHeight;
+		// 	const glm::mat4 proj = glm::perspective(glm::radians(70.0f), aspect, 0.1f, 100.0f);
+		// 	const glm::mat4 vp = proj * camera->ViewMatrix();
 
-			uint8_t* data = nullptr;
-			const uint32_t uboOffset = s_Data.GlobalUBO.AlignedSize * Impl::State::Data->CurrentFrame;
+		// 	uint8_t* data = nullptr;
+		// 	const uint32_t uboOffset = s_Data.GlobalUBO.AlignedSize * Impl::State::Data->CurrentFrame;
 
-			vmaMapMemory(Impl::State::Data->MemAllocator, s_Data.GlobalUBO.MemoryHandle, (void**)&data);
+		// 	vmaMapMemory(Impl::State::Data->MemAllocator, s_Data.GlobalUBO.MemoryHandle, (void**)&data);
 
-			data += uboOffset;
-			memcpy(data, &vp[0][0], sizeof(glm::mat4));
+		// 	data += uboOffset;
+		// 	memcpy(data, &vp[0][0], sizeof(glm::mat4));
 
-			vmaUnmapMemory(Impl::State::Data->MemAllocator, s_Data.GlobalUBO.MemoryHandle);
+		// 	vmaUnmapMemory(Impl::State::Data->MemAllocator, s_Data.GlobalUBO.MemoryHandle);
 
-			glm::mat4* matrices;
-			vmaMapMemory(Impl::State::Data->MemAllocator, s_Data.ObjectSSBO.MemoryHandle, (void**)&matrices);
+		// 	glm::mat4* matrices;
+		// 	vmaMapMemory(Impl::State::Data->MemAllocator, s_Data.ObjectSSBO.MemoryHandle, (void**)&matrices);
 
-			for (size_t i = 0; i < s_Renderables.size(); i++)
-				memcpy(&matrices[i], &s_Renderables[i]->Matrix[0][0], sizeof(glm::mat4));
+		// 	for (size_t i = 0; i < s_Renderables.size(); i++)
+		// 		memcpy(&matrices[i], &s_Renderables[i]->Matrix[0][0], sizeof(glm::mat4));
 
-			vmaUnmapMemory(Impl::State::Data->MemAllocator, s_Data.ObjectSSBO.MemoryHandle);
+		// 	vmaUnmapMemory(Impl::State::Data->MemAllocator, s_Data.ObjectSSBO.MemoryHandle);
 
-			for (size_t i = 0; i < s_Renderables.size(); i++)
-			{
-				const auto& r = s_Renderables[i];
+		// 	for (size_t i = 0; i < s_Renderables.size(); i++)
+		// 	{
+		// 		const auto& r = s_Renderables[i];
 
-				if (pipeline != r->Mat->Template->Pipe)
-				{
-					pipeline = r->Mat->Template->Pipe;
+		// 		if (pipeline != r->Mat->Template->Pipe)
+		// 		{
+		// 			pipeline = r->Mat->Template->Pipe;
 
-					vkCmdBindPipeline(Impl::State::Data->CurrentCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-					vkCmdBindDescriptorSets(Impl::State::Data->CurrentCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->Mat->Template->PipeLayout, 0, 1, &s_Data.GlobalDataDescSet, 1, &s_Data.GlobalDataDescSetOffset);
-					vkCmdBindDescriptorSets(Impl::State::Data->CurrentCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->Mat->Template->PipeLayout, 1, 1, &s_Data.ObjectDataDescSet, 0, nullptr);
-				}
+		// 			vkCmdBindPipeline(Impl::State::Data->CurrentCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+		// 			vkCmdBindDescriptorSets(Impl::State::Data->CurrentCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->Mat->Template->PipeLayout, 0, 1, &s_Data.GlobalDataDescSet, 1, &s_Data.GlobalDataDescSetOffset);
+		// 			vkCmdBindDescriptorSets(Impl::State::Data->CurrentCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->Mat->Template->PipeLayout, 1, 1, &s_Data.ObjectDataDescSet, 0, nullptr);
+		// 		}
 
-				if (textureSet != r->Mat->TextureSet)
-				{
-					textureSet = r->Mat->TextureSet;
-					vkCmdBindDescriptorSets(Impl::State::Data->CurrentCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->Mat->Template->PipeLayout, 2, 1, &textureSet, 0, nullptr);
-				}
+		// 		if (textureSet != r->Mat->TextureSet)
+		// 		{
+		// 			textureSet = r->Mat->TextureSet;
+		// 			vkCmdBindDescriptorSets(Impl::State::Data->CurrentCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->Mat->Template->PipeLayout, 2, 1, &textureSet, 0, nullptr);
+		// 		}
 
-				vkCmdBindVertexBuffers(Impl::State::Data->CurrentCmdBuffer, 0, 1, &r->Model->VBO.BufferHandle, &offset);
-				vkCmdBindIndexBuffer(Impl::State::Data->CurrentCmdBuffer, r->Model->IBO.BufferHandle, 0, VK_INDEX_TYPE_UINT32);
+		// 		vkCmdBindVertexBuffers(Impl::State::Data->CurrentCmdBuffer, 0, 1, &r->Model->VBO.BufferHandle, &offset);
+		// 		vkCmdBindIndexBuffer(Impl::State::Data->CurrentCmdBuffer, r->Model->IBO.BufferHandle, 0, VK_INDEX_TYPE_UINT32);
 
-				vkCmdDrawIndexed(Impl::State::Data->CurrentCmdBuffer, r->Model->NumIndices, 1, 0, 0, i);
-			}
-		}
-
-		s_Renderables.clear();
+		// 		vkCmdDrawIndexed(Impl::State::Data->CurrentCmdBuffer, r->Model->NumIndices, 1, 0, 0, i);
+		// 	}
+		// }
 
 		vkCmdEndRenderPass(Impl::State::Data->CurrentCmdBuffer);
 	}
@@ -308,7 +309,9 @@ namespace VKP
 	bool Renderer3D::CreateBuffers()
 	{
 		bool success = Impl::CreateUniformBuffer(Impl::State::Data, &s_Data.GlobalUBO, sizeof(GlobalData));
-		if (success) success = Impl::CreateStorageBuffer(Impl::State::Data, &s_Data.ObjectSSBO, 10000 * sizeof(glm::mat4));
+		if (success) success = Impl::CreateStorageBuffer(Impl::State::Data, &s_Data.ObjectSSBO, 10000 * sizeof(ObjectData));
+		if (success) success = Impl::CreateBuffer(Impl::State::Data, &s_Data.GlobalVBO, 15'000'000 * sizeof(Vertex), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+		if (success) success = Impl::CreateBuffer(Impl::State::Data, &s_Data.GlobalIBO, 5'000'000 * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
 
 		return success;
 	}

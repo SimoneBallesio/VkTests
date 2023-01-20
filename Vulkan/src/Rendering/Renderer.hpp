@@ -15,13 +15,30 @@ namespace VKP
 	struct Renderable;
 	class MeshCache;
 
+	struct MeshPass
+	{
+		std::vector<Renderable*> UnbatchedObjects = {};
+		std::vector<Renderable*> SortBatches = {};
+	};
+
 	struct GlobalData
 	{
 		glm::mat4 VP;
 	};
 
+	struct ObjectData
+	{
+		glm::mat4 Model;
+	};
+
 	struct Renderer3DData
 	{
+		Buffer GlobalVBO = {};
+		uint32_t GlobalVBOOffset = 0;
+
+		Buffer GlobalIBO = {};
+		uint32_t GlobalIBOOffset = 0;
+
 		Buffer GlobalUBO = {};
 		VkDescriptorSet GlobalDataDescSet = VK_NULL_HANDLE;
 		uint32_t GlobalDataDescSetOffset = 0;
@@ -57,7 +74,7 @@ namespace VKP
 
 	private:
 		static Renderer3DData s_Data;
-		static std::vector<Renderable*> s_Renderables;
+		static MeshPass s_ForwardPass;
 
 		Renderer3D() = default;
 

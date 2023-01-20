@@ -31,7 +31,10 @@ namespace VKP
 
 	void Application::Init()
 	{
-
+		m_Scene->LoadFromPrefab("assets/models/BatchingTest/BatchingTest.prfb");
+		// ^ should register objects with renderer3D
+		// ^ Renderer3D should split them into passes, then push them to large VBO/IBO
+		// ^ then, Renderer3D should build initial batches
 	}
 
 	void Application::Run()
@@ -44,8 +47,6 @@ namespace VKP
 		if (valid) valid = m_Window->Init();
 		if (valid) valid = m_Context->AfterWindowCreation();
 		if (valid) valid = Renderer3D::Init();
-
-		if (valid) valid = m_Scene->LoadFromPrefab("assets/models/Sponza/Sponza.prfb");
 
 		if (!valid) return;
 
@@ -86,9 +87,6 @@ namespace VKP
 		if (m_Left) m_Camera.Position -= m_Camera.Right() * 0.02f;
 
 		m_Context->BeginFrame();
-
-		for (auto it = m_Scene->Begin(); it != m_Scene->End(); it++)
-			Renderer3D::SubmitRenderable(&(*it));
 
 		Renderer3D::Flush(&m_Camera);
 
