@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/UID.hpp"
+
 #include "Rendering/Pipeline.hpp"
 #include "Rendering/Texture.hpp"
 
@@ -10,9 +12,12 @@ namespace VKP
 
 	struct Material
 	{
+		UID Uid;
 		std::string Path = "";
 		Pipeline* Template = nullptr;
 		VkDescriptorSet TextureSet = VK_NULL_HANDLE;
+
+		inline operator const uint64_t& () const { return (const uint64_t&)Uid; }
 	};
 
 	class MaterialCache final

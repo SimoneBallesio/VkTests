@@ -109,6 +109,8 @@ namespace VKP::Impl
 		VkQueue PresentQueue = VK_NULL_HANDLE;
 		VkQueue TransferQueue = VK_NULL_HANDLE;
 
+		VkFence TransferCompleted = VK_NULL_HANDLE;
+
 		FrameData Frames[MAX_CONCURRENT_FRAMES] = {};
 		uint32_t CurrentFrame = 0;
 		VkCommandBuffer CurrentCmdBuffer = VK_NULL_HANDLE;

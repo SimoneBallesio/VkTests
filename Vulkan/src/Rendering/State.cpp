@@ -69,7 +69,7 @@ namespace VKP::Impl
 		endInfo.pCommandBuffers = &cmdBuffer;
 		endInfo.commandBufferCount = 1;
 
-		result = vkQueueSubmit(s->TransferQueue, 1, &endInfo, VK_NULL_HANDLE);
+		result = vkQueueSubmit(s->TransferQueue, 1, &endInfo, s->TransferCompleted);
 		VK_CHECK_RESULT(result);
 
 		if (result != VK_SUCCESS)
@@ -78,7 +78,10 @@ namespace VKP::Impl
 			return false;
 		}
 
-		vkQueueWaitIdle(s->TransferQueue); // TODO: Fence
+		vkWaitForFences(s->Device, 1, &s->TransferCompleted, VK_TRUE, UINT64_MAX);
+
+		vkResetFences(s->Device, 1, &s->TransferCompleted);
+		vkResetCommandPool(s->Device, s->Frames[s->CurrentFrame].TransferPool, 0);
 
 		return true;
 	}

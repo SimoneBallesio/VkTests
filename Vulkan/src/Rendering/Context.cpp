@@ -719,6 +719,16 @@ namespace VKP::Impl
 			s->DeletionQueue.Push([=]() { vkDestroyFence(s->Device, s->Frames[i].PrevFrameRenderEnded, nullptr); });
 		}
 
+		fenceInfo.flags = 0;
+
+		if (vkCreateFence(s->Device, &fenceInfo, nullptr, &s->TransferCompleted))
+		{
+			VKP_ERROR("Unable to create transfer fence");
+			return false;
+		}
+
+		s->DeletionQueue.Push([=]() { vkDestroyFence(s->Device, s->TransferCompleted, nullptr); });
+
 		return true;
 	}
 

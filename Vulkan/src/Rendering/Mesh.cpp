@@ -55,7 +55,12 @@ namespace VKP
 
 		bool success = Impl::CreateVertexBuffer(Impl::State::Data, &mesh->VBO, vertices);
 		if (success) success = Impl::CreateIndexBuffer(Impl::State::Data, &mesh->IBO, indices);
-		if (success) mesh->NumIndices = indices.size();
+
+		if (success)
+		{
+			mesh->NumVertices = vertices.size();
+			mesh->NumIndices = indices.size();
+		}
 
 		else
 		{
