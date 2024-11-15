@@ -51,7 +51,7 @@ namespace VKP
 		ShaderModule* mod = new ShaderModule();
 		const size_t size = file.tellg();
 		mod->ByteCode.resize(size);
-		
+
 		file.seekg(0);
 		file.read((char*)mod->ByteCode.data(), size);
 

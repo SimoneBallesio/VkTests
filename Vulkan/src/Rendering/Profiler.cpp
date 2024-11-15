@@ -62,12 +62,12 @@ namespace VKP
 		m_CurrentFrame = (m_CurrentFrame + 1) % 3;
 
 		vkCmdResetQueryPool(cmdBuffer, m_QueryFrames[m_CurrentFrame].TimerPool, 0, m_QueryFrames[m_CurrentFrame].TimerLast);
-		
+
 		m_QueryFrames[m_CurrentFrame].TimerLast = 0;
 		m_QueryFrames[m_CurrentFrame].FrameTimers.clear();
 
 		vkCmdResetQueryPool(cmdBuffer, m_QueryFrames[m_CurrentFrame].StatPool, 0, m_QueryFrames[m_CurrentFrame].StatLast);
-		
+
 		m_QueryFrames[m_CurrentFrame].StatLast = 0;
 		m_QueryFrames[m_CurrentFrame].StatRecorders.clear();
 
@@ -130,7 +130,6 @@ namespace VKP
 		return m_QueryFrames[m_CurrentFrame].TimerPool;
 	}
 
-
 	VkQueryPool VulkanProfiler::GetStatPool() const
 	{
 		return m_QueryFrames[m_CurrentFrame].StatPool;
@@ -140,7 +139,6 @@ namespace VKP
 	{
 		m_QueryFrames[m_CurrentFrame].FrameTimers.push_back(timer);
 	}
-
 
 	void VulkanProfiler::AddStat(StatRecorder& stat)
 	{
@@ -152,7 +150,6 @@ namespace VKP
 		uint32_t q = m_QueryFrames[m_CurrentFrame].TimerLast++;
 		return q;
 	}
-
 
 	uint32_t VulkanProfiler::GetStatId()
 	{
@@ -190,7 +187,6 @@ namespace VKP
 		VkQueryPool pool = m_Profiler->GetStatPool();
 		vkCmdBeginQuery(m_CmdBuffer, pool, m_Timer.Query, 0);
 	}
-
 
 	VulkanPipelineStatRecorder::~VulkanPipelineStatRecorder()
 	{

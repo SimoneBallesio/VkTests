@@ -14,7 +14,7 @@ namespace VKP
 	class Context;
 	class Scene;
 
-#ifdef VKP_DEBUG	
+#ifdef VKP_DEBUG
 
 	struct Stats
 	{

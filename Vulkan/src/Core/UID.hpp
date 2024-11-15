@@ -19,5 +19,5 @@ namespace VKP
 	private:
 		uint64_t m_UID;
 	};
-	
+
 }

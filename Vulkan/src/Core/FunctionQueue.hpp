@@ -12,5 +12,5 @@ namespace VKP
 		void Push(std::function<void()>&& fn);
 		void Flush();
 	};
-	
+
 }

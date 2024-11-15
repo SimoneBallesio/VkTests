@@ -30,5 +30,5 @@ namespace VKP::Impl
 	bool CreateUniformBuffer(State* s, Buffer* ubo, VkDeviceSize size);
 	bool CreateStorageBuffer(State* s, Buffer* ssbo, VkDeviceSize size);
 	void DestroyBuffer(State* s, Buffer* buffer);
-	
+
 }

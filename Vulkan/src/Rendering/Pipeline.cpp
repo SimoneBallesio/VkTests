@@ -45,7 +45,7 @@ namespace VKP
 			stageInfo.module = s.Module->ModuleHandle;
 			stageInfo.pName = "main";
 		}
-		
+
 		const std::vector<VkDynamicState> dynamicStates = {
 			VK_DYNAMIC_STATE_VIEWPORT,
 			VK_DYNAMIC_STATE_SCISSOR,

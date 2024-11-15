@@ -12,5 +12,5 @@ namespace Assets
 
 		return CompressionMode::None;
 	}
-	
+
 }

@@ -40,11 +40,11 @@ namespace VKP
 
 	void Renderer3D::Destroy()
 	{
-		Impl::DestroyBuffer(Impl::State::Data, &s_Data.GlobalUBO);
-		Impl::DestroyBuffer(Impl::State::Data, &s_Data.GlobalUBO);
-
-		Impl::DestroyBuffer(Impl::State::Data, &s_Data.GlobalVBO);
 		Impl::DestroyBuffer(Impl::State::Data, &s_Data.GlobalIBO);
+		Impl::DestroyBuffer(Impl::State::Data, &s_Data.GlobalVBO);
+
+		Impl::DestroyBuffer(Impl::State::Data, &s_Data.ObjectSSBO);
+		Impl::DestroyBuffer(Impl::State::Data, &s_Data.GlobalUBO);
 
 		for (auto f : s_Data.DefaultFramebuffers)
 			vkDestroyFramebuffer(Impl::State::Data->Device, f, nullptr);

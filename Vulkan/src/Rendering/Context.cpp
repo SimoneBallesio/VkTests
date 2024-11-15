@@ -110,7 +110,6 @@ namespace VKP
 
 		Impl::State::Data->CurrentCmdBuffer = Impl::State::Data->Frames[Impl::State::Data->CurrentFrame].CmdBuffer;
 
-
 #if defined(VKP_DEBUG) && !defined(VKP_PLATFORM_APPLE)
 
 		Impl::State::Data->Profiler->ParseQueries(Impl::State::Data->CurrentCmdBuffer);
